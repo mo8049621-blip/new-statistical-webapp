@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "dev-pm2": "pm2 start vite --name \"stats-frontend-3000\"",
     "stop-pm2": "pm2 delete stats-frontend-3000",
-    "logs-pm2": "pm2 logs stats-frontend-3000"
+    "logs-pm2": "pm2 logs stats-frontend-3000",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist/client"
   },
   "dependencies": {
     "@chakra-ui/react": "^2.7.1",
@@ -26,6 +28,7 @@
     "@types/react": "^19.1.14",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^4.7.0",
+    "gh-pages": "^6.3.0",
     "typescript": "^5.9.2",
     "vite": "^4.4.0"
   },
