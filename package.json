@@ -1,0 +1,36 @@
+{
+  "name": "statistical-frontend",
+  "version": "1.0.0",
+  "description": "前端统计分析应用",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "dev-pm2": "pm2 start vite --name \"stats-frontend-3000\"",
+    "stop-pm2": "pm2 delete stats-frontend-3000",
+    "logs-pm2": "pm2 logs stats-frontend-3000"
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^2.7.1",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "framer-motion": "^10.12.17",
+    "mathjs": "^11.8.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.14.2",
+    "recharts": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.14",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.9.2",
+    "vite": "^4.4.0"
+  },
+  "license": "ISC",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
