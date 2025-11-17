@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Text, Grid, Select, FormControl, FormLabel, Input, Button, Card, CardBody, Alert, AlertIcon, Stack, Divider } from '@chakra-ui/react';
+import { Box, Text, Grid, Select, FormControl, FormLabel, Input, Button, Card, CardBody, Alert, AlertIcon, Stack, Divider, Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react';
 import { performZTest, performTTest } from '../utils/statistics';
 import { HypothesisTestingTabProps } from '../types';
 import PowerFunction from './PowerFunction';
@@ -13,7 +13,6 @@ const HypothesisTestingTab: React.FC<HypothesisTestingTabProps> = ({ dataset, da
   const [sigma, setSigma] = useState<number>(1);
   const [testResult, setTestResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showPowerFunction, setShowPowerFunction] = useState<boolean>(false);
 
   // Perform hypothesis test
   const handleTest = () => {
@@ -58,6 +57,15 @@ const HypothesisTestingTab: React.FC<HypothesisTestingTabProps> = ({ dataset, da
   return (
     <Box>
       <Text fontSize="xl" fontWeight="bold" mb={4}>One-Sample Mean Hypothesis Testing</Text>
+      
+      <Tabs variant="soft-rounded" colorScheme="blue" mb={6}>
+        <TabList>
+          <Tab>Hypothesis Test</Tab>
+          <Tab>Power Function Analysis</Tab>
+        </TabList>
+        
+        <TabPanels>
+          <TabPanel>
       
       <Card mb={6}>
         <CardBody>
@@ -158,13 +166,7 @@ const HypothesisTestingTab: React.FC<HypothesisTestingTabProps> = ({ dataset, da
                 <Text>{testResult.method}</Text>
               </Box>
               
-              <Button 
-                onClick={() => setShowPowerFunction(!showPowerFunction)} 
-                colorScheme="teal" 
-                size="md"
-              >
-                {showPowerFunction ? 'Hide Power Function' : 'Show Power Function'}
-              </Button>
+
               
               <Box>
                 <Text fontWeight="bold">Hypotheses:</Text>
@@ -230,20 +232,13 @@ const HypothesisTestingTab: React.FC<HypothesisTestingTabProps> = ({ dataset, da
           </CardBody>
         </Card>
       )}
+      </TabPanel>
       
-      {showPowerFunction && (
-        <Box mt={8}>
-          <Divider mb={6} />
-          <PowerFunction 
-            defaultMu0={mu0}
-            defaultSigma={varianceType === 'known' ? sigma : testResult?.std || 1}
-            defaultN={dataset.length}
-            defaultAlpha={parseFloat(alpha)}
-            defaultTestType={testType}
-            defaultVarianceType={varianceType}
-          />
-        </Box>
-      )}
+      <TabPanel>
+        <PowerFunction dataset={dataset} />
+      </TabPanel>
+    </TabPanels>
+  </Tabs>
     </Box>
   );
 };

@@ -6,9 +6,6 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev-pm2": "pm2 start vite --name \"stats-frontend-3000\"",
-    "stop-pm2": "pm2 delete stats-frontend-3000",
-    "logs-pm2": "pm2 logs stats-frontend-3000",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist/client"
   },

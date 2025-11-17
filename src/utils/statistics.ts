@@ -1500,55 +1500,13 @@ export const performTTest = (
  * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
  * @returns 功效值
  */
-export const calculateZTestPower = (
-  mu1: number,
-  mu0: number,
-  sigma: number,
-  n: number,
-  alpha: number = 0.05,
-  testType: 'two' | 'left' | 'right' = 'two'
-): number => {
-  // 计算标准误
-  const standardError = sigma / Math.sqrt(n);
-  
-  // 计算临界值
-  let zCritical: number;
-  if (testType === 'two') {
-    zCritical = getZCriticalValue(1 - alpha / 2);
-  } else {
-    zCritical = getZCriticalValue(1 - alpha);
-  }
-  
-  // 计算功效 - 根据lecture9.txt中的公式正确实现
-  let power: number;
-  const delta = mu1 - mu0;
-  const deltaSE = delta / standardError;
-  
-  if (testType === 'two') {
-    // 双侧检验功效公式：Φ((μ₁-μ₀)/(σ/√n) - z_{α/2}) + Φ((μ₀-μ₁)/(σ/√n) - z_{α/2})
-    const term1 = deltaSE - zCritical;
-    const term2 = -deltaSE - zCritical;
-    power = normalCDF(term1) + normalCDF(term2);
-  } else if (testType === 'right') {
-    // 右侧检验功效公式：1 - Φ(zCritical - deltaSE)
-    // 当μ₁ > μ₀时，随着deltaSE增大，功效应趋近于1
-    const z = zCritical - deltaSE;
-    power = 1 - normalCDF(z);
-  } else { // 'left'
-    // 左侧检验功效公式：Φ(-zCritical - deltaSE)
-    const z = -zCritical - deltaSE;
-    power = normalCDF(z);
-  }
-  
-  // 确保power值在有效范围内
-  return Math.max(0, Math.min(1, power));
-};
+
 
 /**
- * 计算单样本t检验的功效函数（方差未知，使用Z检验近似）
+ * 计算t检验的功效（使用近似方法）
  * @param mu1 备择假设的均值
  * @param mu0 原假设的均值
- * @param sigma 总体标准差的估计值
+ * @param sigma 总体标准差
  * @param n 样本量
  * @param alpha 显著性水平
  * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
@@ -1559,61 +1517,106 @@ export const calculateTTestPower = (
   mu0: number,
   sigma: number,
   n: number,
-  alpha: number = 0.05,
-  testType: 'two' | 'left' | 'right' = 'two'
+  alpha: number,
+  testType: 'two' | 'left' | 'right'
 ): number => {
-  // 对于t检验，我们使用Z检验近似计算功效
-  // 这是一种常见的做法，尽管不是完全精确的
-  return calculateZTestPower(mu1, mu0, sigma, n, alpha, testType);
+  const delta = mu1 - mu0;
+  const se = sigma / Math.sqrt(n);
+  const df = n - 1;
+  
+  // 使用t分布临界值
+  const calculateTCritical = (alpha: number, df: number, testType: 'two' | 'left' | 'right'): number => {
+    // 由于没有t分布的反函数，我们使用正态近似来计算临界值
+    // 对于大自由度，这是相当准确的
+    if (testType === 'two') {
+      return -normalCDF(alpha / 2);
+    } else {
+      return -normalCDF(alpha);
+    }
+  };
+  
+  const tCritical = calculateTCritical(alpha, df, testType);
+  
+  if (testType === 'two') {
+    const nonCentrality = Math.abs(delta) / se;
+    // 使用正态近似来计算非中心t分布的功效
+    return normalCDF(-tCritical + nonCentrality) + normalCDF(-tCritical - nonCentrality);
+  } else if (testType === 'right') {
+    const nonCentrality = delta / se;
+    return normalCDF(-tCritical + nonCentrality);
+  } else { // left
+    const nonCentrality = delta / se;
+    return normalCDF(-tCritical - nonCentrality);
+  }
 };
 
 /**
- * 生成功效函数的数据点（用于可视化）
+ * 计算Z检验的功效
+ * @param mu1 备择假设的均值
  * @param mu0 原假设的均值
  * @param sigma 总体标准差
  * @param n 样本量
  * @param alpha 显著性水平
  * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
- * @param varianceType 方差类型: 'known' (已知), 'unknown' (未知)
- * @param muRange 均值范围，格式为 [最小值, 最大值, 步数]
- * @returns 功效函数数据点数组，每个点包含mu和power
+ * @returns 功效值
+ */
+export const calculateZTestPower = (
+  mu1: number,
+  mu0: number,
+  sigma: number,
+  n: number,
+  alpha: number,
+  testType: 'two' | 'left' | 'right'
+): number => {
+  const delta = mu1 - mu0;
+  const se = sigma / Math.sqrt(n);
+  
+  if (testType === 'two') {
+    const zAlphaHalf = -normalCDF(alpha / 2);
+    return normalCDF(-zAlphaHalf + Math.abs(delta) / se) + normalCDF(-zAlphaHalf - Math.abs(delta) / se);
+  } else if (testType === 'right') {
+    const zAlpha = -normalCDF(alpha);
+    return normalCDF(-zAlpha + delta / se);
+  } else { // left
+    const zAlpha = -normalCDF(alpha);
+    return normalCDF(-zAlpha - delta / se);
+  }
+};
+
+/**
+ * 生成功效函数的数据点
+ * @param mu0 原假设的均值
+ * @param sigma 总体标准差
+ * @param n 样本量
+ * @param alpha 显著性水平
+ * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
+ * @param hypothesisTestType 假设检验类型: 'z' (Z检验), 't' (t检验)
+ * @param startMu 起始均值
+ * @param endMu 结束均值
+ * @param step 步长
+ * @returns 功效函数数据点数组
  */
 export const generatePowerFunctionData = (
   mu0: number,
   sigma: number,
   n: number,
-  alpha: number = 0.05,
-  testType: 'two' | 'left' | 'right' = 'two',
-  varianceType: 'known' | 'unknown' = 'known',
-  muRange?: [number, number, number]
+  alpha: number,
+  testType: 'two' | 'left' | 'right',
+  hypothesisTestType: 'z' | 't' = 'z',
+  startMu: number = mu0 - 3 * sigma,
+  endMu: number = mu0 + 3 * sigma,
+  step: number = sigma / 10
 ): { mu: number; power: number }[] => {
-  // 扩展数据范围，确保能显示完整的功效变化曲线
-  const defaultRangeWidth = Math.max(6 * sigma / Math.sqrt(n), 3); // 扩展范围以显示更多功效变化
-  const [minMu, maxMu, step] = muRange || [mu0 - defaultRangeWidth, mu0 + defaultRangeWidth, 0.1]; // 增加步长提高性能
+  const data: { mu: number; power: number }[] = [];
   
-  const dataPoints: { mu: number; power: number }[] = [];
-  
-  // 确保有足够的数据点用于平滑曲线
-  const numSteps = Math.ceil((maxMu - minMu) / step);
-  
-  for (let i = 0; i <= numSteps; i++) {
-    const mu = minMu + i * step;
-    try {
-      const power = varianceType === 'known' 
-        ? calculateZTestPower(mu, mu0, sigma, n, alpha, testType)
-        : calculateTTestPower(mu, mu0, sigma, n, alpha, testType);
-      
-      // 确保power值在有效范围内
-      const validPower = Math.max(0, Math.min(1, power));
-      dataPoints.push({ mu, power: validPower });
-    } catch (error) {
-      console.error(`Error calculating power for mu=${mu}:`, error);
-      // 添加默认值以确保图表不会因为单个数据点的错误而完全失败
-      dataPoints.push({ mu, power: 0.5 });
-    }
+  for (let mu = startMu; mu <= endMu; mu += step) {
+    const power = hypothesisTestType === 'z' 
+      ? calculateZTestPower(mu, mu0, sigma, n, alpha, testType)
+      : calculateTTestPower(mu, mu0, sigma, n, alpha, testType);
+    data.push({ mu, power });
   }
   
-  return dataPoints;
+  return data;
 };
 
 /**
@@ -1630,33 +1633,17 @@ export const calculateSampleSizeForPower = (
   mu1: number,
   mu0: number,
   sigma: number,
-  alpha: number = 0.05,
-  beta: number = 0.2,
-  testType: 'two' | 'left' | 'right' = 'two'
+  alpha: number,
+  beta: number,
+  testType: 'two' | 'left' | 'right'
 ): number => {
-  // 计算效应量
   const delta = Math.abs(mu1 - mu0);
+  const zAlpha = testType === 'two' ? -normalCDF(alpha / 2) : -normalCDF(alpha);
+  const zBeta = -normalCDF(beta);
   
-  // 计算临界值
-  const zAlpha = testType === 'two' ? getZCriticalValue(1 - alpha / 2) : getZCriticalValue(1 - alpha);
-  const zBeta = getZCriticalValue(1 - beta);
-  
-  // 计算所需样本量
-  let n: number;
-  if (testType === 'two') {
-    // 双侧检验: 同时考虑正负两个方向
-    n = Math.pow((sigma * (zAlpha + zBeta)) / delta, 2);
-  } else {
-    // 单侧检验: 只考虑一个方向
-    n = Math.pow((sigma * (zAlpha + zBeta)) / delta, 2);
-  }
-  
-  // 向上取整到整数
+  const n = Math.pow((sigma * (zAlpha + zBeta)) / delta, 2);
   return Math.ceil(n);
 };
-
-// 删除重复的erfcinv函数定义，避免命名冲突
-// 注意：实际erfcinv函数已经在文件前面定义过
 
 /**
  * 生成直方图数据

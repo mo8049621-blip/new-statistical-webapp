@@ -1221,3 +1221,170 @@ export var generateHistogramData = function (data, numBins) {
     }
     return bins;
 };
+
+/**
+ * 计算t检验的功效
+ * @param alpha 显著性水平
+ * @param mu0 原假设的均值
+ * @param mu1 备择假设的均值
+ * @param n 样本量
+ * @param sigma 总体标准差
+ * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
+ * @returns 检验功效
+ */
+export var calculateTTestPower = function (alpha, mu0, mu1, n, sigma, testType) {
+    if (alpha === void 0) { alpha = 0.05; }
+    if (testType === void 0) { testType = 'two'; }
+    var delta = Math.abs(mu1 - mu0);
+    var effectSize = delta / sigma;
+    var standardError = sigma / Math.sqrt(n);
+    var df = n - 1;
+    
+    // 计算临界值
+    var criticalValue;
+    if (testType === 'two') {
+        criticalValue = getApproximateTCriticalValue(df, 1 - alpha / 2);
+    } else if (testType === 'left') {
+        criticalValue = -getApproximateTCriticalValue(df, 1 - alpha);
+    } else {
+        criticalValue = getApproximateTCriticalValue(df, 1 - alpha);
+    }
+    
+    // 计算非中心t分布的非中心参数
+    var noncentralParam = delta / standardError;
+    
+    // 计算功效 (1 - beta)
+    // 使用正态近似来计算非中心t分布的累积概率
+    // 更准确的方法应该使用非中心t分布的累积分布函数，但这里我们使用正态近似
+    var zValue = noncentralParam;
+    var beta = calculateNormalCDF(zValue - criticalValue);
+    
+    if (testType === 'two') {
+        beta = calculateNormalCDF(zValue - criticalValue) - calculateNormalCDF(-zValue - criticalValue);
+        return 1 - beta;
+    } else if (testType === 'left') {
+        return calculateNormalCDF(zValue + criticalValue);
+    } else {
+        return 1 - calculateNormalCDF(zValue - criticalValue);
+    }
+};
+
+/**
+ * 计算Z检验的功效
+ * @param alpha 显著性水平
+ * @param mu0 原假设的均值
+ * @param mu1 备择假设的均值
+ * @param n 样本量
+ * @param sigma 总体标准差
+ * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
+ * @returns 检验功效
+ */
+export var calculateZTestPower = function (alpha, mu0, mu1, n, sigma, testType) {
+    if (alpha === void 0) { alpha = 0.05; }
+    if (testType === void 0) { testType = 'two'; }
+    var delta = Math.abs(mu1 - mu0);
+    var effectSize = delta / sigma;
+    var standardError = sigma / Math.sqrt(n);
+    
+    // 计算临界值
+    var criticalValue;
+    if (testType === 'two') {
+        criticalValue = calculateZCriticalValue(1 - alpha / 2);
+    } else if (testType === 'left') {
+        criticalValue = -calculateZCriticalValue(1 - alpha);
+    } else {
+        criticalValue = calculateZCriticalValue(1 - alpha);
+    }
+    
+    // 计算标准化差异
+    var zValue = delta / standardError;
+    
+    // 计算功效 (1 - beta)
+    var beta;
+    if (testType === 'two') {
+        beta = calculateNormalCDF(zValue - criticalValue) - calculateNormalCDF(-zValue - criticalValue);
+        return 1 - beta;
+    } else if (testType === 'left') {
+        return calculateNormalCDF(zValue + criticalValue);
+    } else {
+        return 1 - calculateNormalCDF(zValue - criticalValue);
+    }
+};
+
+/**
+ * 生成功效函数数据
+ * @param alpha 显著性水平
+ * @param mu0 原假设的均值
+ * @param n 样本量
+ * @param sigma 总体标准差
+ * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
+ * @param testMethod 检验方法: 't' (t检验), 'z' (z检验)
+ * @param minDiff 最小差值
+ * @param maxDiff 最大差值
+ * @param steps 步骤数
+ * @returns 功效函数数据数组
+ */
+export var generatePowerFunctionData = function (alpha, mu0, n, sigma, testType, testMethod, minDiff, maxDiff, steps) {
+    if (alpha === void 0) { alpha = 0.05; }
+    if (testType === void 0) { testType = 'two'; }
+    if (testMethod === void 0) { testMethod = 't'; }
+    if (minDiff === void 0) { minDiff = -5; }
+    if (maxDiff === void 0) { maxDiff = 5; }
+    if (steps === void 0) { steps = 50; }
+    var data = [];
+    var stepSize = (maxDiff - minDiff) / steps;
+    
+    for (var i = 0; i <= steps; i++) {
+        var diff = minDiff + i * stepSize;
+        var mu1 = mu0 + diff;
+        var power;
+        
+        if (testMethod === 't') {
+            power = calculateTTestPower(alpha, mu0, mu1, n, sigma, testType);
+        } else {
+            power = calculateZTestPower(alpha, mu0, mu1, n, sigma, testType);
+        }
+        
+        data.push({
+            difference: diff,
+            power: power
+        });
+    }
+    
+    return data;
+};
+
+/**
+ * 计算达到特定功效所需的样本量
+ * @param alpha 显著性水平
+ * @param mu0 原假设的均值
+ * @param mu1 备择假设的均值
+ * @param sigma 总体标准差
+ * @param desiredPower 期望功效
+ * @param testType 检验类型: 'two' (双侧), 'left' (左侧), 'right' (右侧)
+ * @param testMethod 检验方法: 't' (t检验), 'z' (z检验)
+ * @returns 所需样本量
+ */
+export var calculateSampleSizeForPower = function (alpha, mu0, mu1, sigma, desiredPower, testType, testMethod) {
+    if (alpha === void 0) { alpha = 0.05; }
+    if (desiredPower === void 0) { desiredPower = 0.8; }
+    if (testType === void 0) { testType = 'two'; }
+    if (testMethod === void 0) { testMethod = 't'; }
+    var delta = Math.abs(mu1 - mu0);
+    var effectSize = delta / sigma;
+    
+    // 使用迭代方法计算样本量
+    var n = 2;
+    var power = 0;
+    
+    while (power < desiredPower && n < 10000) {
+        if (testMethod === 't') {
+            power = calculateTTestPower(alpha, mu0, mu1, n, sigma, testType);
+        } else {
+            power = calculateZTestPower(alpha, mu0, mu1, n, sigma, testType);
+        }
+        n++;
+    }
+    
+    return Math.ceil(n);
+};

@@ -7,7 +7,6 @@ import BasicStatisticsTab from '../components/BasicStatisticsTab';
 import MLEMoMTab from '../components/MLEMoMTab';
 import HypothesisTestingTab from '../components/HypothesisTestingTab';
 import SampleSizeCalculator from '../components/SampleSizeCalculator';
-import PowerFunction from '../components/PowerFunction';
 import { calculateMean, calculateStd, calculateMedian, calculateSkewness, calculateKurtosis } from '../utils/statistics';
 
 // Define dataset interface
@@ -571,7 +570,6 @@ const StatisticsApp: React.FC = () => {
             <Tab>MLE & MOM</Tab>
             <Tab>Hypothesis Testing</Tab>
             <Tab>Sample Size Calculation</Tab>
-            <Tab>Power Function</Tab>
           </TabList>
           <TabPanels>
             <TabPanel>
@@ -608,18 +606,13 @@ const StatisticsApp: React.FC = () => {
                 basicStats={basicStats}
               />
             </TabPanel>
+
             <TabPanel>
               <SampleSizeCalculator 
                 basicStats={basicStats}
               />
             </TabPanel>
-            <TabPanel>
-              <PowerFunction 
-                defaultMu0={basicStats ? basicStats.mean : 0}
-                defaultSigma={basicStats ? basicStats.std : 1}
-                defaultN={basicStats ? basicStats.count : 30}
-              />
-            </TabPanel>
+
           </TabPanels>
         </Tabs>
       </Box>

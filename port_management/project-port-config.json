@@ -1,9 +1,0 @@
-{
-  "projectName": "统计项目前端",
-  "projectKey": "stats-frontend",
-  "defaultPort": 3000,
-  "pm2Name": "stats-frontend-3000",
-  "apiPort": 3003,
-  "description": "统计项目前端应用，使用React + Vite构建",
-  "lastModified": "2025-11-14"
-}
