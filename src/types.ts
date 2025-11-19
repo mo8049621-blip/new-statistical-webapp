@@ -97,3 +97,69 @@ export interface EstimationResult {
   method: string;
   params: Record<string, number>;
 };
+
+// Goodness-of-fit test interfaces
+export type GoFTestType = 'kolmogorov-smirnov' | 'chi-square' | 'anderson-darling' | 'shapiro-wilk' | 'jarque-bera';
+
+export type DistributionTypeForGoF = 'normal' | 'uniform' | 'exponential' | 'poisson' | 'gamma' | 'beta' | 'lognormal' | 'weibull';
+
+// Goodness-of-fit test result interface
+export interface GoFTestResult {
+  testType: GoFTestType;
+  distributionType: DistributionTypeForGoF;
+  statistic: number;
+  pValue: number;
+  criticalValue?: number;
+  significanceLevel: number;
+  isReject: boolean;
+  sampleSize: number;
+  degreesOfFreedom?: number;
+  confidenceLevel?: number;
+  testDetails?: {
+    method: string;
+    assumptions: string[];
+    notes?: string;
+  };
+}
+
+// Goodness-of-fit test parameters interface
+export interface GoFTestParams {
+  testType: GoFTestType;
+  distributionType: DistributionTypeForGoF;
+  significanceLevel: number;
+  estimatedParameters?: Record<string, number>;
+  customParameters?: Record<string, number>;
+  binCount?: number;
+  theoreticalBins?: { min: number; max: number; expected: number; observed: number }[];
+}
+
+// Goodness-of-fit test component props interface
+export interface GoodnessOfFitTestProps {
+  dataset: number[];
+  isGeneratedDataset?: boolean;
+  distributionInfo?: DistributionInfo | null;
+  basicStats?: BasicStats | null;
+  onTestComplete?: (result: GoFTestResult) => void;
+};
+
+// Test distribution option interface
+export interface TestDistributionOption {
+  type: DistributionTypeForGoF;
+  name: string;
+  description: string;
+  supportedTests: GoFTestType[];
+  requiresParameterEstimation: boolean;
+  parameterNames: string[];
+  formula?: string;
+}
+
+// Test method option interface
+export interface TestMethodOption {
+  type: GoFTestType;
+  name: string;
+  description: string;
+  applicableDistributions: DistributionTypeForGoF[];
+  assumptions: string[];
+  strengths: string[];
+  limitations: string[];
+}

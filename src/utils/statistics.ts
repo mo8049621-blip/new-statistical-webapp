@@ -288,6 +288,8 @@ export const calculateQuartiles = (data: number[]): { q1: number; q3: number; iq
   return { q1, q3, iqr };
 };
 
+
+
 /**
  * Calculate confidence interval for mean
  * Supports four cases:
@@ -1672,4 +1674,389 @@ export const generateHistogramData = (data: number[], numBins?: number): { name:
   }
   
   return bins;
+};
+
+// ========================================
+// Goodness-of-Fit Test Functions
+// ========================================
+
+// Inverse normal CDF approximation
+const normalInv = (p: number): number => {
+  // Beasley-Springer-Moro algorithm approximation
+  if (p <= 0 || p >= 1) {
+    throw new Error('p must be between 0 and 1');
+  }
+  
+  const a = [2.515517, 0.802853, 0.010328];
+  const b = [1.432788, 0.189269, 0.001308];
+  
+  const t = p < 0.5 ? Math.sqrt(-2 * Math.log(p)) : Math.sqrt(-2 * Math.log(1 - p));
+  
+  let z = t - (a[0] + a[1] * t + a[2] * t * t) / (1 + b[0] * t + b[1] * t * t + b[2] * t * t * t);
+  
+  if (p < 0.5) {
+    z = -z;
+  }
+  
+  return z;
+};
+
+// Chi-square CDF approximation
+const chiSquareCDF = (x: number, df: number): number => {
+  if (x <= 0) return 0;
+  
+  // Using incomplete gamma function approximation
+  const k = df / 2;
+  const theta = 2;
+  
+  // Lower regularized incomplete gamma function P(k, x/theta)
+  return lowerIncompleteGamma(k, x / theta) / gammaFunction(k);
+};
+
+// Lower incomplete gamma function approximation
+const lowerIncompleteGamma = (s: number, x: number): number => {
+  let sum = 0;
+  let term = Math.exp(-x + s * Math.log(x) - gammaFunction(s));
+  
+  for (let i = 0; i < 100; i++) {
+    if (i === 0) {
+      sum += 1 / s;
+      term = term * (x / (s + 1));
+    } else {
+      sum += term / (s + i);
+      term = term * (x / (s + i + 1));
+    }
+    
+    if (term < 1e-15) break;
+  }
+  
+  return Math.exp(-x + s * Math.log(x) - gammaFunction(s)) * sum;
+};
+
+// Gamma function approximation (Lanczos approximation)
+const gammaFunction = (z: number): number => {
+  const g = 7;
+  const p = [
+    0.99999999999980993,
+    676.5203681218851,
+   -1259.1392167224028,
+    771.32342877765313,
+   -176.61502916214059,
+    12.507343278686905,
+   -0.13857109526572012,
+    9.9843695780195716e-6,
+    1.5056327351493116e-7
+  ];
+  
+  if (z < 0.5) {
+    return Math.PI / (Math.sin(Math.PI * z) * gammaFunction(1 - z));
+  }
+  
+  z -= 1;
+  let x = p[0];
+  
+  for (let i = 1; i < p.length; i++) {
+    x += p[i] / (z + i);
+  }
+  
+  const t = z + g + 0.5;
+  
+  return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+};
+
+/**
+ * 计算正态分布的累积分布函数值
+ */
+const normalPDF = (x: number, mean: number = 0, std: number = 1): number => {
+  return (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
+};
+
+/**
+ * 计算Kolmogorov-Smirnov检验
+ */
+export const calculateKolmogorovSmirnovTest = (
+  data: number[],
+  distributionType: string,
+  parameters: Record<string, number> = {}
+): { statistic: number; pValue: number; criticalValue: number } => {
+  const n = data.length;
+  const sortedData = [...data].sort((a, b) => a - b);
+  
+  // 计算经验累积分布函数
+  const empiricalCDF = (x: number): number => {
+    const count = sortedData.filter(val => val <= x).length;
+    return count / n;
+  };
+  
+  // 计算理论累积分布函数
+  let theoreticalCDF: (x: number) => number;
+  
+  switch (distributionType) {
+    case 'normal': {
+      const mean = parameters.mean || 0;
+      const std = parameters.std || 1;
+      theoreticalCDF = (x: number) => normalCDF((x - mean) / std);
+      break;
+    }
+    case 'exponential': {
+      const lambda = parameters.lambda || 1;
+      theoreticalCDF = (x: number) => x < 0 ? 0 : 1 - Math.exp(-lambda * x);
+      break;
+    }
+    case 'uniform': {
+      const a = parameters.a || 0;
+      const b = parameters.b || 1;
+      theoreticalCDF = (x: number) => x < a ? 0 : x > b ? 1 : (x - a) / (b - a);
+      break;
+    }
+    default:
+      throw new Error(`Unsupported distribution type: ${distributionType}`);
+  }
+  
+  // 计算KS统计量
+  let maxDiff = 0;
+  const half = 1 / (2 * n);
+  
+  for (let i = 0; i < n; i++) {
+    const x = sortedData[i];
+    const f1 = theoreticalCDF(x);
+    const f2 = empiricalCDF(x);
+    const f3 = empiricalCDF(x - Number.EPSILON);
+    
+    maxDiff = Math.max(maxDiff, Math.abs(f1 - f2), Math.abs(f1 - f3));
+  }
+  
+  // 计算临界值 (α = 0.05)
+  const criticalValue = 1.36 / Math.sqrt(n);
+  
+  // 近似计算p值
+  const pValue = Math.exp(-2 * n * maxDiff * maxDiff);
+  
+  return {
+    statistic: maxDiff,
+    pValue: Math.min(pValue, 1),
+    criticalValue
+  };
+};
+
+/**
+ * 计算卡方检验
+ */
+export const calculateChiSquareTest = (
+  data: number[],
+  distributionType: string,
+  parameters: Record<string, number> = {},
+  numBins: number = 10
+): { statistic: number; pValue: number; degreesOfFreedom: number; bins: any[] } => {
+  const n = data.length;
+  const sortedData = [...data].sort((a, b) => a - b);
+  const min = sortedData[0];
+  const max = sortedData[n - 1];
+  const binWidth = (max - min) / numBins;
+  
+  // 创建分箱
+  const bins: { min: number; max: number; observed: number; expected: number }[] = [];
+  
+  for (let i = 0; i < numBins; i++) {
+    const binMin = min + i * binWidth;
+    const binMax = i === numBins - 1 ? max + Number.EPSILON : binMin + binWidth;
+    const observed = data.filter(val => val >= binMin && val < binMax).length;
+    
+    let expected = 0;
+    
+    // 计算理论期望频数
+    switch (distributionType) {
+      case 'normal': {
+        const mean = parameters.mean || calculateMean(data);
+        const std = parameters.std || calculateStd(data);
+        const cdfMax = normalCDF((binMax - mean) / std);
+        const cdfMin = normalCDF((binMin - mean) / std);
+        expected = n * (cdfMax - cdfMin);
+        break;
+      }
+      case 'exponential': {
+        const lambda = parameters.lambda || 1 / calculateMean(data);
+        const cdfMax = 1 - Math.exp(-lambda * binMax);
+        const cdfMin = 1 - Math.exp(-lambda * binMin);
+        expected = n * (cdfMax - cdfMin);
+        break;
+      }
+      case 'uniform': {
+        const a = parameters.a || min;
+        const b = parameters.b || max;
+        const cdfMax = (binMax - a) / (b - a);
+        const cdfMin = (binMin - a) / (b - a);
+        expected = n * Math.max(0, Math.min(1, cdfMax) - Math.max(0, cdfMin));
+        break;
+      }
+      default:
+        expected = n / numBins;
+    }
+    
+    bins.push({ min: binMin, max: binMax, observed, expected });
+  }
+  
+  // 合并期望频数过小的分箱
+  const validBins = bins.filter(bin => bin.expected >= 5);
+  const mergedBins = validBins.length < 5 ? bins : validBins;
+  
+  // 计算卡方统计量
+  let chiSquareStat = 0;
+  const estimatedParams = Object.keys(parameters).length;
+  const df = mergedBins.length - 1 - estimatedParams;
+  
+  for (const bin of mergedBins) {
+    if (bin.expected > 0) {
+      chiSquareStat += Math.pow(bin.observed - bin.expected, 2) / bin.expected;
+    }
+  }
+  
+  // 计算p值
+  const pValue = 1 - chiSquareCDF(chiSquareStat, df);
+  
+  return {
+    statistic: chiSquareStat,
+    pValue: Math.max(pValue, 0),
+    degreesOfFreedom: df,
+    bins: mergedBins
+  };
+};
+
+/**
+ * 计算Anderson-Darling检验 (主要用于正态分布)
+ */
+export const calculateAndersonDarlingTest = (
+  data: number[],
+  distributionType: string,
+  parameters: Record<string, number> = {}
+): { statistic: number; pValue: number } => {
+  if (distributionType !== 'normal') {
+    throw new Error('Anderson-Darling test is primarily designed for normal distributions');
+  }
+  
+  const n = data.length;
+  const sortedData = [...data].sort((a, b) => a - b);
+  const mean = parameters.mean || calculateMean(data);
+  const std = parameters.std || calculateStd(data);
+  
+  // 标准化数据
+  const standardizedData = sortedData.map(x => (x - mean) / std);
+  
+  // 计算AD统计量
+  let adStat = 0;
+  const inv = (p: number) => normalInv(p);
+  
+  for (let i = 0; i < n; i++) {
+    const fi = normalCDF(standardizedData[i]);
+    const fn1 = normalCDF(standardizedData[n - 1 - i]);
+    
+    const yi = Math.max(1e-15, Math.min(1 - 1e-15, fi));
+    const yn = Math.max(1e-15, Math.min(1 - 1e-15, fn1));
+    
+    adStat += (2 * (i + 1) - 1) * (Math.log(yi) + Math.log(1 - yn));
+  }
+  
+  adStat = -n - (adStat / n);
+  
+  // 调整统计量 (A2* = A2 * (1 + 0.75/n + 2.25/n^2))
+  const adjustedStat = adStat * (1 + 0.75 / n + 2.25 / (n * n));
+  
+  // 近似计算p值
+  let pValue: number;
+  if (adjustedStat < 0.2) {
+    pValue = 1 - Math.exp(-13.436 + 101.14 * adjustedStat - 223.73 * adjustedStat * adjustedStat);
+  } else if (adjustedStat < 0.34) {
+    pValue = 1 - Math.exp(-8.318 + 42.796 * adjustedStat - 59.938 * adjustedStat * adjustedStat);
+  } else if (adjustedStat < 0.6) {
+    pValue = Math.exp(0.9177 - 4.279 * adjustedStat - 1.38 * adjustedStat * adjustedStat);
+  } else {
+    pValue = Math.exp(1.2937 - 5.709 * adjustedStat + 0.0186 * adjustedStat * adjustedStat);
+  }
+  
+  return {
+    statistic: adjustedStat,
+    pValue: Math.max(0, Math.min(1, pValue))
+  };
+};
+
+/**
+ * 计算Jarque-Bera检验 (主要用于正态分布)
+ */
+export const calculateJarqueBeraTest = (data: number[]): { statistic: number; pValue: number } => {
+  const n = data.length;
+  const mean = calculateMean(data);
+  const std = calculateStd(data);
+  const skewness = calculateSkewness(data, { count: n, mean });
+  const excessKurtosis = calculateKurtosis(data, { count: n, mean, std }) - 3; // 过度峰度
+  
+  // JB统计量
+  const jbStat = (n / 6) * (Math.pow(skewness, 2) + Math.pow(excessKurtosis, 2) / 4);
+  
+  // p值 (卡方分布，df=2)
+  const pValue = 1 - chiSquareCDF(jbStat, 2);
+  
+  return {
+    statistic: jbStat,
+    pValue: Math.max(Math.min(pValue, 1), 0)
+  };
+};
+
+/**
+ * 执行完整的goodness-of-fit检验
+ */
+export const executeGoFTest = (
+  data: number[],
+  testType: string,
+  distributionType: string,
+  significanceLevel: number = 0.05,
+  parameters: Record<string, number> = {},
+  options: { numBins?: number } = {}
+): any => {
+  let result: any = {};
+  
+  try {
+    switch (testType) {
+      case 'kolmogorov-smirnov':
+        result = calculateKolmogorovSmirnovTest(data, distributionType, parameters);
+        result.testType = 'kolmogorov-smirnov';
+        result.distributionType = distributionType;
+        result.significanceLevel = significanceLevel;
+        result.isReject = result.statistic > result.criticalValue;
+        break;
+        
+      case 'chi-square':
+        result = calculateChiSquareTest(data, distributionType, parameters, options.numBins);
+        result.testType = 'chi-square';
+        result.distributionType = distributionType;
+        result.significanceLevel = significanceLevel;
+        result.criticalValue = chiSquareCDF(1 - significanceLevel, result.degreesOfFreedom);
+        result.isReject = result.statistic > result.criticalValue;
+        break;
+        
+      case 'anderson-darling':
+        result = calculateAndersonDarlingTest(data, distributionType, parameters);
+        result.testType = 'anderson-darling';
+        result.distributionType = distributionType;
+        result.significanceLevel = significanceLevel;
+        result.isReject = result.pValue < significanceLevel;
+        break;
+        
+      case 'jarque-bera':
+        result = calculateJarqueBeraTest(data);
+        result.testType = 'jarque-bera';
+        result.distributionType = 'normal'; // JB test is for normality
+        result.significanceLevel = significanceLevel;
+        result.isReject = result.pValue < significanceLevel;
+        break;
+        
+      default:
+        throw new Error(`Unsupported test type: ${testType}`);
+    }
+    
+    result.sampleSize = data.length;
+    
+    return result;
+  } catch (error) {
+    throw new Error(`GoF test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 };
