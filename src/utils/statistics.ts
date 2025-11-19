@@ -1701,36 +1701,67 @@ const normalInv = (p: number): number => {
   return z;
 };
 
-// Chi-square CDF approximation
+// Chi-square CDF approximation using continued fraction
 const chiSquareCDF = (x: number, df: number): number => {
   if (x <= 0) return 0;
+  if (df <= 0) return 0;
   
-  // Using incomplete gamma function approximation
   const k = df / 2;
-  const theta = 2;
+  const t = x / 2;
   
-  // Lower regularized incomplete gamma function P(k, x/theta)
-  return lowerIncompleteGamma(k, x / theta) / gammaFunction(k);
+  // Use regularized incomplete gamma function P(k, t)
+  return regularizedGammaP(k, t);
 };
 
-// Lower incomplete gamma function approximation
-const lowerIncompleteGamma = (s: number, x: number): number => {
-  let sum = 0;
-  let term = Math.exp(-x + s * Math.log(x) - gammaFunction(s));
+// Regularized incomplete gamma function P(s, x)
+const regularizedGammaP = (s: number, x: number): number => {
+  if (x <= 0) return 0;
+  if (x < s + 1) {
+    // Series representation for P(s, x)
+    return seriesGamma(s, x);
+  } else {
+    // Continued fraction representation for Q(s, x), then P = 1 - Q
+    return 1 - continuedGammaQ(s, x);
+  }
+};
+
+// Series representation for P(s, x)
+const seriesGamma = (s: number, x: number): number => {
+  let sum = 1 / s;
+  let term = 1 / s;
+  let n = 1;
   
-  for (let i = 0; i < 100; i++) {
-    if (i === 0) {
-      sum += 1 / s;
-      term = term * (x / (s + 1));
-    } else {
-      sum += term / (s + i);
-      term = term * (x / (s + i + 1));
-    }
-    
-    if (term < 1e-15) break;
+  while (term > 1e-15 && n < 1000) {
+    term *= x / (s + n);
+    sum += term;
+    n++;
   }
   
-  return Math.exp(-x + s * Math.log(x) - gammaFunction(s)) * sum;
+  return sum * Math.exp(-x + s * Math.log(x) - gammaFunction(s));
+};
+
+// Continued fraction representation for Q(s, x)
+const continuedGammaQ = (s: number, x: number): number => {
+  let b = x + 1 - s;
+  let c = 1 / 1e-30;
+  let d = 1 / b;
+  let h = d;
+  
+  for (let i = 1; i < 1000; i++) {
+    const an = -i * (i - s);
+    b += 2;
+    d = an * d + b;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = b + an / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d;
+    const delta = d * c;
+    h *= delta;
+    
+    if (Math.abs(delta - 1) < 1e-15) break;
+  }
+  
+  return Math.exp(-x + s * Math.log(x) - gammaFunction(s)) * h;
 };
 
 // Gamma function approximation (Lanczos approximation)
@@ -1772,6 +1803,38 @@ const normalPDF = (x: number, mean: number = 0, std: number = 1): number => {
 };
 
 /**
+ * 阶乘函数
+ */
+const factorial = (n: number): number => {
+  if (n < 0) return 0;
+  if (n === 0 || n === 1) return 1;
+  let result = 1;
+  for (let i = 2; i <= n; i++) {
+    result *= i;
+  }
+  return result;
+};
+
+/**
+ * 泊松分布的概率质量函数
+ */
+const poissonPMF = (k: number, lambda: number): number => {
+  if (k < 0) return 0;
+  return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+};
+
+/**
+ * 泊松分布的累积分布函数
+ */
+const poissonCDF = (k: number, lambda: number): number => {
+  let sum = 0;
+  for (let i = 0; i <= k; i++) {
+    sum += poissonPMF(i, lambda);
+  }
+  return sum;
+};
+
+/**
  * 计算Kolmogorov-Smirnov检验
  */
 export const calculateKolmogorovSmirnovTest = (
@@ -1809,13 +1872,21 @@ export const calculateKolmogorovSmirnovTest = (
       theoreticalCDF = (x: number) => x < a ? 0 : x > b ? 1 : (x - a) / (b - a);
       break;
     }
+    case 'poisson': {
+      const lambda = parameters.lambda || 1;
+      theoreticalCDF = (x: number) => {
+        // 对于泊松分布，取整处理
+        const k = Math.floor(x);
+        return k < 0 ? 0 : poissonCDF(k, lambda);
+      };
+      break;
+    }
     default:
       throw new Error(`Unsupported distribution type: ${distributionType}`);
   }
   
   // 计算KS统计量
   let maxDiff = 0;
-  const half = 1 / (2 * n);
   
   for (let i = 0; i < n; i++) {
     const x = sortedData[i];
@@ -1829,12 +1900,23 @@ export const calculateKolmogorovSmirnovTest = (
   // 计算临界值 (α = 0.05)
   const criticalValue = 1.36 / Math.sqrt(n);
   
-  // 近似计算p值
-  const pValue = Math.exp(-2 * n * maxDiff * maxDiff);
+  // 修正的p-value计算
+  const en = Math.sqrt(n);
+  const lambda = (en + 0.12 + 0.11/en) * maxDiff;
+  
+  // 使用更准确的KS检验p-value计算
+  let pValue = 0;
+  for (let k = 1; k <= 100; k++) {
+    const term = Math.pow(-1, k - 1) * Math.exp(-2 * k * k * lambda * lambda);
+    pValue += term;
+    if (Math.abs(term) < 1e-15) break;
+  }
+  
+  pValue = Math.max(0, Math.min(1, 2 * pValue));
   
   return {
     statistic: maxDiff,
-    pValue: Math.min(pValue, 1),
+    pValue: pValue,
     criticalValue
   };
 };
@@ -1887,6 +1969,16 @@ export const calculateChiSquareTest = (
         const cdfMax = (binMax - a) / (b - a);
         const cdfMin = (binMin - a) / (b - a);
         expected = n * Math.max(0, Math.min(1, cdfMax) - Math.max(0, cdfMin));
+        break;
+      }
+      case 'poisson': {
+        const lambda = parameters.lambda || 1;
+        // 对于泊松分布，使用离散概率质量函数
+        const binCenter = (binMin + binMax) / 2;
+        const k = Math.round(binCenter);
+        const cdfMax = poissonCDF(Math.floor(binMax), lambda);
+        const cdfMin = poissonCDF(Math.floor(binMin) - 1, lambda);
+        expected = n * (cdfMax - cdfMin);
         break;
       }
       default:
@@ -1963,15 +2055,18 @@ export const calculateAndersonDarlingTest = (
   
   // 近似计算p值
   let pValue: number;
-  if (adjustedStat < 0.2) {
+  if (adjustedStat <= 0.2) {
     pValue = 1 - Math.exp(-13.436 + 101.14 * adjustedStat - 223.73 * adjustedStat * adjustedStat);
-  } else if (adjustedStat < 0.34) {
+  } else if (adjustedStat <= 0.34) {
     pValue = 1 - Math.exp(-8.318 + 42.796 * adjustedStat - 59.938 * adjustedStat * adjustedStat);
-  } else if (adjustedStat < 0.6) {
+  } else if (adjustedStat <= 0.6) {
     pValue = Math.exp(0.9177 - 4.279 * adjustedStat - 1.38 * adjustedStat * adjustedStat);
   } else {
     pValue = Math.exp(1.2937 - 5.709 * adjustedStat + 0.0186 * adjustedStat * adjustedStat);
   }
+  
+  // 确保p值在有效范围内
+  pValue = Math.max(0, Math.min(1, pValue));
   
   return {
     statistic: adjustedStat,

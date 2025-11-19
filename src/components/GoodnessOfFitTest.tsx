@@ -54,6 +54,7 @@ import {
   calculateMLE,
   calculateMean,
   calculateStd,
+  calculateVariance,
   generateHistogramData,
 } from '../utils/statistics';
 import {
@@ -86,6 +87,29 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
   const [estimatedParams, setEstimatedParams] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [histogramData, setHistogramData] = useState<any[]>([]);
+
+  // Auto-test results state
+  const [autoTestResults, setAutoTestResults] = useState<Array<{
+    distributionType: string;
+    distributionName: string;
+    testType: string;
+    testName: string;
+    statistic: number;
+    pValue: number;
+    isReject: boolean;
+    confidenceLevel: number;
+    criticalValue?: number;
+    degreesOfFreedom?: number;
+    rank: number;
+    isActualDistribution?: boolean;
+  }>>([]);
+  const [autoTestRunning, setAutoTestRunning] = useState<boolean>(false);
+  const [recommendedDistribution, setRecommendedDistribution] = useState<any>(null);
+  const [actualDistributionAccuracy, setActualDistributionAccuracy] = useState<{
+    isRecommended: boolean;
+    rank: number;
+    pValue: number;
+  } | null>(null);
 
   // Test configuration options
   const distributionOptions: TestDistributionOption[] = [
@@ -120,7 +144,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
       type: 'poisson',
       name: 'Poisson Distribution',
       description: 'Discrete distribution for counting events',
-      supportedTests: ['chi-square'],
+      supportedTests: ['kolmogorov-smirnov', 'chi-square'],
       requiresParameterEstimation: true,
       parameterNames: ['lambda'],
       formula: 'P(X=k) = (λ^k * e^(-λ))/k!',
@@ -132,7 +156,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
       type: 'kolmogorov-smirnov',
       name: 'Kolmogorov-Smirnov Test',
       description: 'Non-parametric test comparing empirical and theoretical CDFs',
-      applicableDistributions: ['normal', 'uniform', 'exponential'],
+      applicableDistributions: ['normal', 'uniform', 'exponential', 'poisson'],
       assumptions: [
         'Continuous distribution',
         'Independent observations',
@@ -348,6 +372,193 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
     }
   };
 
+  // 自动测试功能
+  const performAutoTest = async () => {
+    try {
+      setError(null);
+      setAutoTestRunning(true);
+      setAutoTestResults([]);
+
+      // 验证输入
+      if (!dataset || dataset.length === 0) {
+        throw new Error('数据集是必需的');
+      }
+
+      const alpha = parseFloat(significanceLevel);
+      if (isNaN(alpha) || alpha <= 0 || alpha >= 1) {
+        throw new Error('显著性水平必须在0和1之间');
+      }
+
+      if (dataset.length < 5) {
+        throw new Error('样本大小必须至少为5');
+      }
+
+      const testResults: any[] = [];
+      const alphaValue = parseFloat(significanceLevel);
+
+      // 遍历所有分布类型和测试方法组合
+      for (const distribution of distributionOptions) {
+        for (const testMethod of testMethodOptions.filter(method => 
+          distribution.supportedTests.includes(method.type)
+        )) {
+          try {
+            // 计算参数估计
+            let paramsToUse: Record<string, number> = {};
+
+            switch (distribution.type) {
+              case 'normal': {
+                const mean = basicStats?.mean || calculateMean(dataset);
+                const std = basicStats?.std || calculateStd(dataset);
+                // 确保标准差不为0
+                const safeStd = std > 0 ? std : Math.sqrt(calculateVariance(dataset));
+                paramsToUse = { mean, std: safeStd };
+                break;
+              }
+              case 'uniform': {
+                // 使用更稳健的参数估计方法
+                const sortedData = [...dataset].sort((a, b) => a - b);
+                const n = sortedData.length;
+                // 使用更稳健的极值估计，避免异常值影响
+                const q1 = sortedData[Math.floor(n * 0.25)];
+                const q3 = sortedData[Math.floor(n * 0.75)];
+                const iqr = q3 - q1;
+                
+                // 使用四分位距来估计分布范围
+                const min = Math.max(sortedData[0], q1 - 3 * iqr);
+                const max = Math.min(sortedData[n-1], q3 + 3 * iqr);
+                
+                paramsToUse = { a: min, b: max };
+                break;
+              }
+              case 'exponential': {
+                const mean = calculateMean(dataset);
+                // 确保均值有效
+                if (mean <= 0) {
+                  console.warn('Invalid mean for exponential distribution, using fallback');
+                  paramsToUse = { lambda: 1 };
+                } else {
+                  paramsToUse = { lambda: 1 / mean };
+                }
+                break;
+              }
+              case 'poisson': {
+                const mean = calculateMean(dataset);
+                // 确保参数有效（泊松分布要求λ > 0）
+                if (mean <= 0) {
+                  console.warn('Invalid mean for Poisson distribution, using fallback');
+                  paramsToUse = { lambda: 1 };
+                } else {
+                  paramsToUse = { lambda: mean };
+                }
+                break;
+              }
+            }
+
+            // 执行测试
+            const result = executeGoFTest(
+              dataset,
+              testMethod.type as GoFTestType,
+              distribution.type as DistributionTypeForGoF,
+              alphaValue,
+              paramsToUse,
+              { numBins }
+            );
+
+            // 添加到结果列表
+            testResults.push({
+              distributionType: distribution.type,
+              distributionName: distribution.name,
+              testType: testMethod.type,
+              testName: testMethod.name,
+              statistic: result.statistic,
+              pValue: result.pValue,
+              isReject: result.isReject,
+              confidenceLevel: 1 - alphaValue,
+              criticalValue: result.criticalValue,
+              degreesOfFreedom: result.degreesOfFreedom,
+              isActualDistribution: distributionInfo && distributionInfo.type === distribution.type,
+            });
+
+          } catch (testError) {
+            console.warn(`测试失败 - ${distribution.name} + ${testMethod.name}:`, testError);
+            // 添加失败的结果
+            testResults.push({
+              distributionType: distribution.type,
+              distributionName: distribution.name,
+              testType: testMethod.type,
+              testName: testMethod.name,
+              statistic: NaN,
+              pValue: NaN,
+              isReject: true,
+              confidenceLevel: 1 - alphaValue,
+              criticalValue: undefined,
+              degreesOfFreedom: undefined,
+            });
+          }
+        }
+      }
+
+      // 按p-value排序并应用综合评分算法
+      const sortedResults = testResults
+        .filter(result => !isNaN(result.pValue))
+        .map(result => {
+          // 计算综合评分，p-value权重70%，显著性权重30%
+          const pValueScore = result.pValue;
+          // 给不同测试方法适当的权重
+          const methodWeightMap = {
+            'kolmogorov-smirnov': 1.0,
+            'chi-square': 0.9,
+            'anderson-darling': 1.1,
+            'jarque-bera': 0.8
+          } as const;
+          
+          const methodWeight = methodWeightMap[result.testType as keyof typeof methodWeightMap] || 1.0;
+          
+          const significanceBonus = result.pValue > 0.1 ? 0.05 : 0; // 对高p-value给予小幅奖励
+          const combinedScore = (pValueScore + significanceBonus) * methodWeight;
+          
+          return {
+            ...result,
+            combinedScore
+          };
+        })
+        .sort((a, b) => b.combinedScore - a.combinedScore)
+        .map((result, index) => ({ ...result, rank: index + 1 }));
+
+      setAutoTestResults(sortedResults);
+
+      // 设置推荐结果（p-value最高的）
+      if (sortedResults.length > 0) {
+        const recommended = sortedResults[0];
+        setRecommendedDistribution(recommended);
+
+        // 计算实际分布的准确性
+        if (distributionInfo && distributionInfo.type) {
+          const actualDistributionResult = sortedResults.find(
+            result => result.distributionType === distributionInfo.type
+          );
+          
+          if (actualDistributionResult) {
+            setActualDistributionAccuracy({
+              isRecommended: recommended.distributionType === distributionInfo.type,
+              rank: actualDistributionResult.rank,
+              pValue: actualDistributionResult.pValue,
+            });
+          } else {
+            setActualDistributionAccuracy(null);
+          }
+        } else {
+          setActualDistributionAccuracy(null);
+        }
+      }
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '自动测试执行失败');
+    } finally {
+      setAutoTestRunning(false);
+    }
+  };
+
   return (
     <Box>
       <Text fontSize="xl" fontWeight="bold" mb={4}>Goodness-of-Fit Testing</Text>
@@ -355,6 +566,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
       <Tabs variant="soft-rounded" colorScheme="blue" mb={6}>
         <TabList>
           <Tab>Test Configuration</Tab>
+          <Tab>Auto Test</Tab>
           <Tab>Results & Visualization</Tab>
           <Tab>Help & Documentation</Tab>
         </TabList>
@@ -511,6 +723,219 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
               >
                 Perform Goodness-of-Fit Test
               </Button>
+            </VStack>
+          </TabPanel>
+
+          {/* Auto Test Tab */}
+          <TabPanel>
+            <VStack spacing={6} align="stretch">
+              {/* Auto Test Controls */}
+              <Card>
+                <CardBody>
+                  <Text fontSize="lg" fontWeight="bold" mb={4}>自动拟合优度检验</Text>
+                  <Text fontSize="sm" color="gray.600" mb={4}>
+                    自动测试所有支持的分布类型和检验方法，基于p-value为您推荐最佳拟合的分布类型。
+                  </Text>
+                  
+                  <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
+                    {/* Significance Level */}
+                    <FormControl>
+                      <FormLabel>显著性水平 (α)</FormLabel>
+                      <Select 
+                        value={significanceLevel} 
+                        onChange={(e) => setSignificanceLevel(e.target.value)}
+                      >
+                        <option value="0.01">0.01 (99% confidence)</option>
+                        <option value="0.05">0.05 (95% confidence)</option>
+                        <option value="0.10">0.10 (90% confidence)</option>
+                      </Select>
+                    </FormControl>
+
+                    {/* Chi-square specific: Number of bins */}
+                    <FormControl>
+                      <FormLabel>卡方检验的分组数量</FormLabel>
+                      <NumberInput
+                        min={5}
+                        max={50}
+                        value={numBins}
+                        onChange={(value) => setNumBins(parseInt(value) || 10)}
+                      >
+                        <NumberInputField />
+                      </NumberInput>
+                    </FormControl>
+                  </Grid>
+
+                  {/* Execute Auto Test Button */}
+                  <Button 
+                    onClick={performAutoTest} 
+                    colorScheme="green" 
+                    size="lg"
+                    mt={4}
+                    isLoading={autoTestRunning}
+                    loadingText="正在进行自动测试..."
+                  >
+                    开始自动测试
+                  </Button>
+                </CardBody>
+              </Card>
+
+              {/* Recommended Distribution */}
+              {recommendedDistribution && (
+                <Card>
+                  <CardBody>
+                    <Text fontSize="lg" fontWeight="bold" mb={4}>推荐结果</Text>
+                    <Box p={4} bgColor="green.50" borderRadius={4} border="1px" borderColor="green.200">
+                      <Text fontWeight="bold" color="green.700" mb={2}>
+                        🏆 最佳拟合分布
+                      </Text>
+                      <Text fontSize="lg" fontWeight="semibold" mb={2}>
+                        {recommendedDistribution.distributionName}
+                      </Text>
+                      <Text fontSize="sm" color="green.600" mb={3}>
+                        推荐理由：p-value = {recommendedDistribution.pValue.toFixed(4)} (最高)
+                      </Text>
+                      <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
+                        <Box>
+                          <Text fontSize="sm" fontWeight="bold">推荐使用的检验方法:</Text>
+                          <Text fontSize="sm">{recommendedDistribution.testName}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="sm" fontWeight="bold">置信水平:</Text>
+                          <Text fontSize="sm">{(recommendedDistribution.confidenceLevel * 100).toFixed(1)}%</Text>
+                        </Box>
+                      </Grid>
+                    </Box>
+
+                    {/* Actual Distribution Comparison */}
+                    {distributionInfo && actualDistributionAccuracy && (
+                      <Box mt={4} p={4} bgColor="blue.50" borderRadius={4} border="1px" borderColor="blue.200">
+                        <Text fontWeight="bold" color="blue.700" mb={2}>
+                          📊 实际分布验证
+                        </Text>
+                        <Text fontSize="sm" fontWeight="semibold" mb={2}>
+                          实际生成的数据分布：{distributionInfo.name}
+                        </Text>
+                        <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={4}>
+                          <Box>
+                            <Text fontSize="sm" fontWeight="bold">准确性评估:</Text>
+                            <Text fontSize="sm" color={actualDistributionAccuracy.isRecommended ? "green.600" : "orange.600"}>
+                              {actualDistributionAccuracy.isRecommended ? "✅ 算法正确推荐" : "⚠️ 算法推荐有误"}
+                            </Text>
+                          </Box>
+                          <Box>
+                            <Text fontSize="sm" fontWeight="bold">实际分布排名:</Text>
+                            <Text fontSize="sm">
+                              第 {actualDistributionAccuracy.rank} 名
+                            </Text>
+                          </Box>
+                          <Box>
+                            <Text fontSize="sm" fontWeight="bold">实际分布p-value:</Text>
+                            <Text fontSize="sm">
+                              {actualDistributionAccuracy.pValue.toFixed(4)}
+                            </Text>
+                          </Box>
+                        </Grid>
+                        {actualDistributionAccuracy.isRecommended ? (
+                          <Alert status="success" mt={3} size="sm">
+                            <AlertIcon />
+                            <Text fontSize="sm">
+                              🎉 很好！算法成功识别出正确的数据分布类型。
+                            </Text>
+                          </Alert>
+                        ) : (
+                          <Alert status="warning" mt={3} size="sm">
+                            <AlertIcon />
+                            <Text fontSize="sm">
+                              ⚠️ 算法推荐了不同的分布类型。这可能是由于样本量不足、分布参数估计误差或其他统计因素造成的。
+                            </Text>
+                          </Alert>
+                        )}
+                      </Box>
+                    )}
+
+                    {!distributionInfo && (
+                      <Alert status="info" mt={4} size="sm">
+                        <AlertIcon />
+                        <Text fontSize="sm">
+                          💡 这是手动输入或上传的数据，算法基于统计测试结果推荐最拟合的分布类型。
+                        </Text>
+                      </Alert>
+                    )}
+                  </CardBody>
+                </Card>
+              )}
+
+              {/* Auto Test Results Table */}
+              {autoTestResults.length > 0 && (
+                <Card>
+                  <CardBody>
+                    <Text fontSize="lg" fontWeight="bold" mb={4}>详细测试结果</Text>
+                    <Box overflowX="auto">
+                      <Table variant="simple" size="sm">
+                        <Thead>
+                          <Tr>
+                            <Th>排名</Th>
+                            <Th>分布类型</Th>
+                            <Th>检验方法</Th>
+                            <Th>检验统计量</Th>
+                            <Th>p-value</Th>
+                            <Th>结果</Th>
+                            <Th>置信水平</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {autoTestResults.map((result, index) => (
+                            <Tr key={`${result.distributionType}-${result.testType}`} 
+                                bgColor={index === 0 ? "green.50" : result.isActualDistribution ? "blue.50" : "transparent"}
+                                borderLeft={index === 0 ? "4px solid" : result.isActualDistribution ? "2px solid" : "none"}
+                                borderLeftColor={index === 0 ? "green.400" : result.isActualDistribution ? "blue.400" : "transparent"}
+                            >
+                              <Td>
+                                <HStack>
+                                  {index === 0 && <Text>🥇</Text>}
+                                  {result.isActualDistribution && <Text>📊</Text>}
+                                  <Text>{result.rank}</Text>
+                                </HStack>
+                              </Td>
+                              <Td>
+                                <Text fontWeight={index === 0 || result.isActualDistribution ? "bold" : "normal"}>
+                                  {result.distributionName}
+                                  {result.isActualDistribution && (
+                                    <Badge ml={2} colorScheme="blue" size="sm">
+                                      实际分布
+                                    </Badge>
+                                  )}
+                                </Text>
+                              </Td>
+                              <Td>{result.testName}</Td>
+                              <Td>{isNaN(result.statistic) ? 'N/A' : result.statistic.toFixed(4)}</Td>
+                              <Td>
+                                <Text fontWeight={index === 0 ? "bold" : "normal"}
+                                      color={index === 0 ? "green.600" : "inherit"}>
+                                  {isNaN(result.pValue) ? 'N/A' : result.pValue.toFixed(4)}
+                                </Text>
+                              </Td>
+                              <Td>
+                                <Badge colorScheme={result.isReject ? 'red' : 'green'}>
+                                  {result.isReject ? '拒绝原假设' : '接受原假设'}
+                                </Badge>
+                              </Td>
+                              <Td>{(result.confidenceLevel * 100).toFixed(1)}%</Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </Table>
+                    </Box>
+                    
+                    <Alert status="info" mt={4}>
+                      <AlertIcon />
+                      <Text fontSize="sm">
+                        <strong>说明：</strong>p-value越大表示数据越符合该分布。排名第一的结果是最推荐的分布类型。
+                      </Text>
+                    </Alert>
+                  </CardBody>
+                </Card>
+              )}
             </VStack>
           </TabPanel>
 
