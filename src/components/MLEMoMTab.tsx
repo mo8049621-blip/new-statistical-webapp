@@ -4,15 +4,24 @@ import { calculateMLE, calculateMoM } from '../utils/statistics';
 import { EstimationResult, MLEMoMTabProps } from '../types';
 
 function MLEMoMTab({ dataset, distribution, basicStats, isGeneratedDataset }: MLEMoMTabProps) {
-  const [selectedDistribution, setSelectedDistribution] = useState<string>('normal');
+  const [selectedDistribution, setSelectedDistribution] = useState<string>('');
   const [estimationResults, setEstimationResults] = useState<EstimationResult[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Calculate if estimate button should be disabled
+  const isEstimateButtonDisabled = (!isGeneratedDataset && !selectedDistribution) || dataset.length === 0;
 
   useEffect(() => {
     // Automatically update selected distribution when dataset or distribution changes
     if (distribution && dataset.length > 0) {
-      setSelectedDistribution(distribution.type || 'normal');
-      handleEstimate();
+      const validType = distribution.type || '';
+      setSelectedDistribution(validType);
+      
+      // Only call handleEstimate if we have a valid distribution type
+      // This prevents the error when distribution.type is something like 'csv'
+      if (validType && !['csv', 'xlsx'].includes(validType.toLowerCase())) {
+        handleEstimate();
+      }
     }
   }, [dataset, distribution, basicStats]);
 
@@ -23,6 +32,12 @@ function MLEMoMTab({ dataset, distribution, basicStats, isGeneratedDataset }: ML
   const handleEstimate = () => {
     if (dataset.length === 0) {
       setError('Please import or generate data first');
+      return;
+    }
+
+    // Check if distribution is selected for unknown distribution scenarios
+    if (!isGeneratedDataset && !selectedDistribution) {
+      setError('Please select a distribution type first');
       return;
     }
 
@@ -46,7 +61,12 @@ function MLEMoMTab({ dataset, distribution, basicStats, isGeneratedDataset }: ML
 
       setEstimationResults(results);
     } catch (err) {
-      setError(`Estimation calculation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      if (err instanceof Error && err.message.includes('Unsupported distribution type')) {
+        // Replace the generic error with a user-friendly message asking to select a distribution model
+        setError('Please select a valid distribution model first');
+      } else {
+        setError(`Estimation calculation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
     }
   };
 
@@ -68,23 +88,25 @@ function MLEMoMTab({ dataset, distribution, basicStats, isGeneratedDataset }: ML
             <CardBody>
               <Text fontSize="lg" fontWeight="bold" mb={4}>Parameter Estimation</Text>
               
-              {/* Only show manual selection option when distribution is unknown */}
-              {!isGeneratedDataset ? (
-                <Box mb={4}>
-                  <Text mb={2}>Select Distribution Type:</Text>
-                  <Select
-                    value={selectedDistribution}
-                    onChange={handleDistributionChange}
-                    width="full"
-                  >
-                    {distributionOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Box>
-              ) : distribution ? (
+              {/* Distribution selection - always show for both known and unknown distribution scenarios */}
+              <Box mb={4}>
+                <Text mb={2}>Select Distribution Type:</Text>
+                <Select
+                  value={selectedDistribution}
+                  onChange={handleDistributionChange}
+                  width="full"
+                  placeholder="Please select a distribution type"
+                >
+                  {distributionOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </Box>
+              
+              {/* Show auto-detection result if available */}
+              {isGeneratedDataset && distribution && (
                 <Box mb={4} bg="blue.50" p={4} borderRadius="md">
                   <Text fontWeight="medium" mb={2}>Auto-detection Result:</Text>
                   <Text fontSize="sm" mb={1}>Distribution Type: {distribution.name}</Text>
@@ -95,15 +117,16 @@ function MLEMoMTab({ dataset, distribution, basicStats, isGeneratedDataset }: ML
                     </Text>
                   )}
                   <Text fontSize="sm" mt={2} color="blue.700">
-                    Using {distribution.name} for Maximum Likelihood Estimation and Method of Moments
+                    Currently using {distribution.name} for estimation
                   </Text>
                 </Box>
-              ) : null}
+              )}
               
               <Button
                 colorScheme="blue"
                 width="full"
                 onClick={handleEstimate}
+                isDisabled={isEstimateButtonDisabled}
               >
                 Perform Estimation
               </Button>

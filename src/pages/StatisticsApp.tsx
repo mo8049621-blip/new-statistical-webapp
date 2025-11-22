@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Container, Heading, Tabs, TabList, TabPanels, Tab, TabPanel, Divider, Alert, AlertIcon, Input, Button, Text, Checkbox, Stack, Textarea, Grid } from '@chakra-ui/react';
-import FileUploader from '../components/FileUploader';
-import DistributionGenerator from '../components/DistributionGenerator';
-import ConfidenceIntervalsContainer from '../components/ConfidenceIntervalsContainer';
-import BasicStatisticsTab from '../components/BasicStatisticsTab';
-import MLEMoMTab from '../components/MLEMoMTab';
-import HypothesisTestingTab from '../components/HypothesisTestingTab';
-import SampleSizeCalculator from '../components/SampleSizeCalculator';
+import FileUploader from '../components/FileUploader.tsx';
+import DistributionGenerator from '../components/DistributionGenerator.tsx';
+import ConfidenceIntervalsContainer from '../components/ConfidenceIntervalsContainer.tsx';
+import BasicStatisticsTab from '../components/BasicStatisticsTab.tsx';
+import MLEMoMTab from '../components/MLEMoMTab.tsx';
+import HypothesisTestingTab from '../components/HypothesisTestingTab.tsx';
+import SampleSizeCalculator from '../components/SampleSizeCalculator.tsx';
 import { calculateMean, calculateStd, calculateMedian, calculateSkewness, calculateKurtosis } from '../utils/statistics';
 
 // Define dataset interface

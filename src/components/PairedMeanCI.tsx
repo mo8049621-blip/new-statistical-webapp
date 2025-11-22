@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, Button, VStack, HStack, Card, CardBody, Table, Tr, Th, Td, Alert, Select, Textarea } from '@chakra-ui/react';
 import { calculateTwoSampleConfidenceInterval } from '../utils/statistics';
+import { TailType } from '../types';
 
 interface PairedMeanCIProps {
   pairedData?: { before: number[]; after: number[] };
+  tailType?: TailType;
+  onTailTypeChange?: (tailType: TailType) => void;
 }
 
-function PairedMeanCI({ pairedData = { before: [], after: [] } }: PairedMeanCIProps) {
+function PairedMeanCI({ pairedData = { before: [], after: [] }, tailType = 'two-tailed', onTailTypeChange }: PairedMeanCIProps) {
   const [beforeData, setBeforeData] = useState<string>('');
   const [afterData, setAfterData] = useState<string>('');
   const [confidenceLevel, setConfidenceLevel] = useState<string>('0.95');
@@ -50,7 +53,10 @@ function PairedMeanCI({ pairedData = { before: [], after: [] } }: PairedMeanCIPr
         before,
         after,
         confidence,
-        { method: 'paired' }
+        { 
+          method: 'paired',
+          tailType: tailType
+        }
       );
 
       setResult(ciResult);
@@ -102,7 +108,7 @@ function PairedMeanCI({ pairedData = { before: [], after: [] } }: PairedMeanCIPr
             />
           </Box>
 
-          <HStack>
+          <HStack spacing={4}>
             <Box flex={1}>
               <Text fontWeight="medium" mb={2}>Confidence Level</Text>
               <Select
@@ -114,6 +120,19 @@ function PairedMeanCI({ pairedData = { before: [], after: [] } }: PairedMeanCIPr
                 <option value="0.95">95%</option>
                 <option value="0.99">99%</option>
                 <option value="0.999">99.9%</option>
+              </Select>
+            </Box>
+            
+            <Box flex={1}>
+              <Text fontWeight="medium" mb={2}>Confidence Interval Type</Text>
+              <Select
+                value={tailType}
+                onChange={(e) => onTailTypeChange?.(e.target.value as TailType)}
+                size="lg"
+              >
+                <option value="two-tailed">Two-Tailed</option>
+                <option value="left-tailed">Left-Tailed</option>
+                <option value="right-tailed">Right-Tailed</option>
               </Select>
             </Box>
             <Button onClick={handleCalculate} colorScheme="blue" size="lg">
@@ -144,9 +163,14 @@ function PairedMeanCI({ pairedData = { before: [], after: [] } }: PairedMeanCIPr
                   <Th>Margin of Error</Th>
                   <Td>{result.marginOfError.toFixed(4)}</Td>
                 </Tr>
+                {/* Always show both lower and upper bounds regardless of tailType */}
                 <Tr>
-                  <Th>Confidence Interval</Th>
-                  <Td>[{result.lower.toFixed(4)}, {result.upper.toFixed(4)}]</Td>
+                  <Th>Lower Bound</Th>
+                  <Td>{result.lower.toFixed(4)}</Td>
+                </Tr>
+                <Tr>
+                  <Th>Upper Bound</Th>
+                  <Td>{result.upper.toFixed(4)}</Td>
                 </Tr>
               </tbody>
             </Table>

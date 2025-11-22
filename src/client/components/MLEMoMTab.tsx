@@ -11,8 +11,14 @@ function MLEMoMTab({ dataset, distribution, basicStats, isGeneratedDataset }: ML
   useEffect(() => {
     // Automatically update selected distribution when dataset or distribution changes
     if (distribution && dataset.length > 0) {
-      setSelectedDistribution(distribution.type || 'normal');
-      handleEstimate();
+      const validType = distribution.type || 'normal';
+      setSelectedDistribution(validType);
+      
+      // Only call handleEstimate if we have a valid distribution type
+      // This prevents the error when distribution.type is something like 'csv'
+      if (validType && !['csv', 'xlsx'].includes(validType.toLowerCase())) {
+        handleEstimate();
+      }
     }
   }, [dataset, distribution, basicStats]);
 
@@ -46,7 +52,12 @@ function MLEMoMTab({ dataset, distribution, basicStats, isGeneratedDataset }: ML
 
       setEstimationResults(results);
     } catch (err) {
-      setError(`Estimation calculation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      if (err instanceof Error && err.message.includes('Unsupported distribution type')) {
+        // Replace the generic error with a user-friendly message asking to select a distribution model
+        setError('Please select a valid distribution model first');
+      } else {
+        setError(`Estimation calculation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
     }
   };
 

@@ -1,20 +1,19 @@
-import React, { useState } from 'react';
-import { Box, Text, Grid, Card, CardBody, Select, FormControl, FormLabel, Switch, Input, Button, Alert, AlertIcon, AlertDescription } from '@chakra-ui/react';
+import React, { useState, useEffect } from 'react';
+import { Box, Text, Grid, Card, CardBody, Select, FormControl, FormLabel, Switch, Input, Button, Alert, AlertIcon, AlertDescription, Table, TableContainer } from '@chakra-ui/react';
+import { TableHead, TableRow, TableCell, TableBody } from '@chakra-ui/table';
 import { calculateConfidenceInterval, calculateMean } from '../utils/statistics';
-import { BasicStats } from '../types';
+import { BasicStats, TailType, DistributionInfo } from '../types';
 
 interface OneSampleMeanCIProps {
   dataset?: number[];
   isGeneratedDataset?: boolean; // New flag indicating if the dataset is system-generated
-  distributionInfo?: { // Dataset distribution information
-    type: string;
-    name: string;
-    parameters: Record<string, number>;
-  };
+  distributionInfo?: DistributionInfo | undefined; // Use the imported DistributionInfo type
   basicStats?: BasicStats | null;
+  tailType?: TailType;
+  onTailTypeChange?: (tailType: TailType) => void;
 }
 
-function OneSampleMeanCI({ dataset = [], isGeneratedDataset = false, distributionInfo, basicStats }: OneSampleMeanCIProps) {
+function OneSampleMeanCI({ dataset = [], isGeneratedDataset = false, distributionInfo, basicStats, tailType = 'two-tailed', onTailTypeChange }: OneSampleMeanCIProps) {
   // Confidence interval calculation options
   const [ciOptions, setCiOptions] = useState({
     confidenceLevel: 0.95,
@@ -66,12 +65,19 @@ function OneSampleMeanCI({ dataset = [], isGeneratedDataset = false, distributio
       criticalValue: number;
     };
   } | null>(null);
+  
+  // Track if we're using sample variance instead of user input
+  const [isUsingSampleVariance, setIsUsingSampleVariance] = useState(false);
 
   const handleCalculate = () => {
     try {
       if (dataset.length === 0) {
         throw new Error('Please select or generate a dataset above first');
       }
+      
+      // Check if we should use sample variance instead of user input
+      const isInvalidVariance = ciOptions.knownVariance && (ciOptions.populationVariance <= 0 || isNaN(ciOptions.populationVariance));
+      setIsUsingSampleVariance(isInvalidVariance);
       
       // Calculate mean, prefer using passed statistics
       const mean = sampleMean;
@@ -83,7 +89,8 @@ function OneSampleMeanCI({ dataset = [], isGeneratedDataset = false, distributio
         {
           isNormal: ciOptions.isNormal,
           knownVariance: ciOptions.knownVariance,
-          populationVariance: ciOptions.populationVariance
+          populationVariance: ciOptions.populationVariance,
+          tailType: tailType
         }
       );
       
@@ -135,38 +142,53 @@ function OneSampleMeanCI({ dataset = [], isGeneratedDataset = false, distributio
               </Select>
             </FormControl>
             
-            {/* Only show manual settings when not using generated dataset */}
-            {!isGeneratedDataset && (
-              <>
-                <FormControl>
-                  <FormLabel>Population is Normally Distributed</FormLabel>
-                  <Switch
-                    isChecked={ciOptions.isNormal}
-                    onChange={(e) => setCiOptions({ ...ciOptions, isNormal: e.target.checked })}
-                  />
-                </FormControl>
-                
-                <FormControl>
-                  <FormLabel>Known Population Variance</FormLabel>
-                  <Switch
-                    isChecked={ciOptions.knownVariance}
-                    onChange={(e) => setCiOptions({ ...ciOptions, knownVariance: e.target.checked })}
-                  />
-                </FormControl>
-                
-                {ciOptions.knownVariance && (
-                  <FormControl>
-                    <FormLabel>Population Variance Value</FormLabel>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={ciOptions.populationVariance}
-                      onChange={(e) => setCiOptions({ ...ciOptions, populationVariance: parseFloat(e.target.value) || 0 })}
-                    />
-                  </FormControl>
-                )}
-              </>
+            <FormControl>
+              <FormLabel>Population is Normally Distributed</FormLabel>
+              <Switch
+                isChecked={ciOptions.isNormal}
+                onChange={(e) => setCiOptions({ ...ciOptions, isNormal: e.target.checked })}
+              />
+            </FormControl>
+            
+            <FormControl>
+              <FormLabel>Confidence Interval Type</FormLabel>
+              <Select
+                value={tailType}
+                onChange={(e) => onTailTypeChange?.(e.target.value as TailType)}
+              >
+                <option value="two-tailed">Two-Tailed</option>
+                <option value="left-tailed">Left-Tailed (Lower Bound)</option>
+                <option value="right-tailed">Right-Tailed (Upper Bound)</option>
+              </Select>
+            </FormControl>
+            
+            <FormControl>
+              <FormLabel>Known Population Variance</FormLabel>
+              <Switch
+                isChecked={ciOptions.knownVariance}
+                onChange={(e) => setCiOptions({ ...ciOptions, knownVariance: e.target.checked })}
+              />
+            </FormControl>
+            
+            {ciOptions.knownVariance && (
+              <FormControl>
+                <FormLabel>Population Variance Value</FormLabel>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={ciOptions.populationVariance}
+                  onChange={(e) => setCiOptions({ ...ciOptions, populationVariance: parseFloat(e.target.value) || 0 })}
+                />
+              </FormControl>
+            )}
+            
+            {/* Show warning if invalid variance is detected */}
+            {isUsingSampleVariance && (
+              <Alert status="warning" mt={4} width="100%">
+                <AlertIcon />
+                <AlertDescription>Invalid population variance value provided. Using sample variance instead for confidence interval calculation.</AlertDescription>
+              </Alert>
             )}
             
             {/* For generated dataset, show actual distribution info */}
@@ -208,6 +230,7 @@ function OneSampleMeanCI({ dataset = [], isGeneratedDataset = false, distributio
               <Text fontSize="2xl" fontWeight="bold">{result.mean.toFixed(4)}</Text>
             </CardBody>
           </Card>
+          {/* Always show both lower and upper bounds regardless of tailType */}
           <Card>
             <CardBody>
               <Text fontSize="sm" color="gray.500">CI Lower Bound</Text>

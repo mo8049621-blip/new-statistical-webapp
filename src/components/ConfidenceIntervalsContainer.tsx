@@ -5,20 +5,9 @@ import TwoSampleMeanCI from './TwoSampleMeanCI';
 import ProportionCI from './ProportionCI';
 import PairedMeanCI from './PairedMeanCI';
 import TwoProportionCI from './TwoProportionCI';
-import { BasicStats } from '../types';
+import { BasicStats, ConfidenceIntervalsContainerProps, TailType } from '../types';
 
-interface ConfidenceIntervalsContainerProps {
-  dataset?: number[];
-  dataset2?: number[];
-  pairedData?: {before: number[], after: number[]};
-  isGeneratedDataset?: boolean; // New flag indicating if the dataset is system-generated
-  distributionInfo?: { // Dataset distribution information
-    type: string;
-    name: string;
-    parameters: Record<string, number>;
-  };
-  basicStats?: BasicStats | null;
-}
+// Using the imported interface from types.ts
 
 function ConfidenceIntervalsContainer({ 
   dataset = [], 
@@ -26,7 +15,9 @@ function ConfidenceIntervalsContainer({
   pairedData = { before: [], after: [] },
   isGeneratedDataset = false,
   distributionInfo,
-  basicStats
+  basicStats,
+  tailType: externalTailType,
+  onTailTypeChange: externalOnTailTypeChange
 }: ConfidenceIntervalsContainerProps) {
   // Primary category: mean difference and proportion
   const [primaryCategory, setPrimaryCategory] = useState('mean'); // 'mean' or 'proportion'
@@ -36,6 +27,21 @@ function ConfidenceIntervalsContainer({
   
   // Secondary category: specific type under proportion
   const [proportionSubType, setProportionSubType] = useState('oneProportion'); // 'oneProportion', 'twoProportion'
+  
+  // Tail type for confidence intervals
+  const [internalTailType, setInternalTailType] = useState<TailType>('two-tailed');
+  
+  // Use external tailType if provided, otherwise use internal state
+  const tailType = externalTailType ?? internalTailType;
+  
+  // Handle tail type change
+  const handleTailTypeChange = (newTailType: TailType) => {
+    if (externalOnTailTypeChange) {
+      externalOnTailTypeChange(newTailType);
+    } else {
+      setInternalTailType(newTailType);
+    }
+  };
 
   // Render corresponding confidence interval component based on selected type
   const renderIntervalComponent = () => {
@@ -45,26 +51,46 @@ function ConfidenceIntervalsContainer({
           return <OneSampleMeanCI 
             dataset={dataset} 
             isGeneratedDataset={isGeneratedDataset} 
-            distributionInfo={distributionInfo}
+            distributionInfo={distributionInfo || undefined}
+            basicStats={basicStats || undefined}
+            tailType={tailType}
+            onTailTypeChange={handleTailTypeChange}
           />;
         case 'twoSample':
-          return <TwoSampleMeanCI dataset1={dataset} dataset2={dataset2} />;
+          return <TwoSampleMeanCI 
+            dataset1={dataset} 
+            dataset2={dataset2} 
+            tailType={tailType}
+            onTailTypeChange={handleTailTypeChange}
+          />;
         case 'paired':
-          return <PairedMeanCI pairedData={pairedData} />;
+          return <PairedMeanCI 
+            pairedData={pairedData} 
+            tailType={tailType}
+            onTailTypeChange={handleTailTypeChange}
+          />;
         default:
-          return <OneSampleMeanCI dataset={dataset} />;
+          return <OneSampleMeanCI 
+            dataset={dataset} 
+            tailType={tailType}
+            onTailTypeChange={handleTailTypeChange}
+          />;
       }
     } else if (primaryCategory === 'proportion') {
-      switch (proportionSubType) {
-        case 'oneProportion':
-          return <ProportionCI dataset={dataset} />;
-        case 'twoProportion':
-          return <TwoProportionCI />;
+        switch (proportionSubType) {
+          case 'oneProportion':return <ProportionCI dataset={dataset} tailType={tailType} onTailTypeChange={handleTailTypeChange} />;
+         case 'twoProportion':
+           return <TwoProportionCI tailType={tailType} onTailTypeChange={handleTailTypeChange} />;
         default:
-          return <ProportionCI dataset={dataset} />;
+            return <ProportionCI dataset={dataset} tailType={tailType} onTailTypeChange={handleTailTypeChange} />;
       }
     }
-    return <OneSampleMeanCI dataset={dataset} basicStats={basicStats} />;
+    return <OneSampleMeanCI 
+      dataset={dataset} 
+      basicStats={basicStats} 
+      tailType={tailType}
+      onTailTypeChange={handleTailTypeChange}
+    />;
   };
 
   return (

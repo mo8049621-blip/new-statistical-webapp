@@ -2,6 +2,11 @@
 // math library import removed as it's no longer needed for current implementation
 
 /**
+ * Tail type for confidence intervals
+ */
+export type TailType = 'two-tailed' | 'left-tailed' | 'right-tailed';
+
+/**
  * Calculate MLE estimates
  */
 export const calculateMLE = (data: number[], distType: string, basicStats?: any): Record<string, number> => {
@@ -308,6 +313,7 @@ export const calculateConfidenceInterval = (data: number[], confidenceLevel: num
   isNormal?: boolean;
   knownVariance?: boolean;
   populationVariance?: number;
+  tailType?: TailType;
 } = {}): { 
   lower: number; 
   upper: number; 
@@ -319,7 +325,7 @@ export const calculateConfidenceInterval = (data: number[], confidenceLevel: num
     throw new Error('Data array cannot be empty');
   }
   
-  const { isNormal = false, knownVariance = false, populationVariance } = options;
+  const { isNormal = false, knownVariance = false, populationVariance, tailType = 'two-tailed' } = options;
   const n = data.length;
   const mean = calculateMean(data);
   
@@ -343,23 +349,33 @@ export const calculateConfidenceInterval = (data: number[], confidenceLevel: num
   
   if (knownVariance) {
     // Known variance, use z-distribution
-// Calculate z critical value based on confidence level
-    switch (confidenceLevel) {
+    // Calculate z critical value based on confidence level and tail type
+    const alpha = 1 - confidenceLevel;
+    const adjustedConfidenceLevel = tailType === 'two-tailed' ? confidenceLevel : 1 - alpha;
+    
+    switch (adjustedConfidenceLevel) {
       case 0.90:
-        criticalValue = 1.645;
+        criticalValue = 1.282; // For one-tailed, 0.90 is 1.282
+        if (tailType === 'two-tailed') criticalValue = 1.645;
         break;
       case 0.95:
-        criticalValue = 1.96;
+        criticalValue = 1.645; // For one-tailed, 0.95 is 1.645
+        if (tailType === 'two-tailed') criticalValue = 1.96;
+        break;
+      case 0.975:
+        criticalValue = 1.96; // For one-tailed, 0.975 is 1.96
         break;
       case 0.99:
-        criticalValue = 2.576;
+        criticalValue = 2.326; // For one-tailed, 0.99 is 2.326
+        if (tailType === 'two-tailed') criticalValue = 2.576;
+        break;
+      case 0.995:
+        criticalValue = 2.576; // For one-tailed, 0.995 is 2.576
         break;
       default:
         // For other confidence levels, use approximation
-        const alpha = 1 - confidenceLevel;
-        // Use inverse error function to approximate z-value
-// Using Taylor expansion approximation
-        const zApprox = Math.sqrt(2) * inverseErrorFunction(2 * (1 - alpha/2) - 1);
+        const alphaAdjusted = tailType === 'two-tailed' ? alpha / 2 : alpha;
+        const zApprox = Math.sqrt(2) * inverseErrorFunction(2 * (1 - alphaAdjusted) - 1);
         criticalValue = Math.abs(zApprox);
     }
     method = knownVariance ? 'Z-distribution (known variance)' : 'Z-distribution (unknown variance, large sample)';
@@ -370,23 +386,38 @@ export const calculateConfidenceInterval = (data: number[], confidenceLevel: num
       // Normal distribution or small sample, use t-distribution
 // Using approximate t-critical value table
       const df = n - 1;
-      criticalValue = getApproximateTCriticalValue(df, confidenceLevel);
+      // Adjust confidence level for one-tailed tests
+      const adjustedConfidenceLevel = tailType === 'two-tailed' ? confidenceLevel : 1 - (1 - confidenceLevel);
+      criticalValue = getApproximateTCriticalValue(df, adjustedConfidenceLevel);
       method = 't distribution (normal, unknown variance)';
     } else {
       // Non-normal large sample, use z-distribution approximation
-      switch (confidenceLevel) {
+      const alpha = 1 - confidenceLevel;
+      const adjustedConfidenceLevel = tailType === 'two-tailed' ? confidenceLevel : 1 - alpha;
+      
+      switch (adjustedConfidenceLevel) {
         case 0.90:
-          criticalValue = 1.645;
+          criticalValue = 1.282; // For one-tailed, 0.90 is 1.282
+          if (tailType === 'two-tailed') criticalValue = 1.645;
           break;
         case 0.95:
-          criticalValue = 1.96;
+          criticalValue = 1.645; // For one-tailed, 0.95 is 1.645
+          if (tailType === 'two-tailed') criticalValue = 1.96;
+          break;
+        case 0.975:
+          criticalValue = 1.96; // For one-tailed, 0.975 is 1.96
           break;
         case 0.99:
-          criticalValue = 2.576;
+          criticalValue = 2.326; // For one-tailed, 0.99 is 2.326
+          if (tailType === 'two-tailed') criticalValue = 2.576;
+          break;
+        case 0.995:
+          criticalValue = 2.576; // For one-tailed, 0.995 is 2.576
           break;
         default:
-          const alpha = 1 - confidenceLevel;
-          const zApprox = Math.sqrt(2) * inverseErrorFunction(2 * (1 - alpha/2) - 1);
+          // For other confidence levels, use approximation
+          const alphaAdjusted = tailType === 'two-tailed' ? alpha / 2 : alpha;
+          const zApprox = Math.sqrt(2) * inverseErrorFunction(2 * (1 - alphaAdjusted) - 1);
           criticalValue = Math.abs(zApprox);
       }
       method = 'Z-distribution (non-normal, large sample, unknown variance)';
@@ -397,9 +428,28 @@ export const calculateConfidenceInterval = (data: number[], confidenceLevel: num
   // Calculate margin of error
   const marginOfError = criticalValue * standardError;
   
-  // Calculate confidence interval
-  const lower = mean - marginOfError;
-  const upper = mean + marginOfError;
+  // Calculate confidence interval based on tail type
+  let lower: number;
+  let upper: number;
+  
+  switch (tailType) {
+    case 'left-tailed':
+      // Left-tailed test: only lower bound is bounded
+      lower = -Infinity;
+      upper = mean + marginOfError;
+      break;
+    case 'right-tailed':
+      // Right-tailed test: only upper bound is bounded
+      lower = mean - marginOfError;
+      upper = Infinity;
+      break;
+    case 'two-tailed':
+    default:
+      // Two-tailed test: both bounds are bounded
+      lower = mean - marginOfError;
+      upper = mean + marginOfError;
+      break;
+  }
   
   return { lower, upper, marginOfError, method, criticalValue };
 };
@@ -513,7 +563,8 @@ export function calculateDifferences(before: number[], after: number[]): number[
 export function calculateOneSampleMeanCI(
   data: number[], 
   confidenceLevel: number,
-  knownVariance?: number
+  knownVariance?: number,
+  tailType: TailType = 'two-tailed'
 ): {
   mean: number;
   standardError: number;
@@ -528,10 +579,13 @@ export function calculateOneSampleMeanCI(
   let marginOfError: number;
   let method: string;
   
+  // Adjust confidence level for tail type
+  const adjustedConfidenceLevel = tailType === 'two-tailed' ? confidenceLevel : 1 - (1 - confidenceLevel);
+  
   if (knownVariance !== undefined) {
     // Use z-test (known variance)
     standardError = Math.sqrt(knownVariance) / Math.sqrt(n);
-    const zCritical = getZCriticalValue(confidenceLevel);
+    const zCritical = getZCriticalValue(adjustedConfidenceLevel);
     marginOfError = zCritical * standardError;
     method = 'z-test (known variance)';
   } else {
@@ -539,17 +593,37 @@ export function calculateOneSampleMeanCI(
     const stdDev = calculateStdDev(data);
     standardError = stdDev / Math.sqrt(n);
     const degreesOfFreedom = n - 1;
-    const tCritical = getTCriticalValue(confidenceLevel, degreesOfFreedom);
+    const tCritical = getTCriticalValue(adjustedConfidenceLevel, degreesOfFreedom);
     marginOfError = tCritical * standardError;
     method = 't-test (unknown variance)';
+  }
+  
+  // Calculate bounds based on tail type
+  let lowerBound: number;
+  let upperBound: number;
+  
+  switch (tailType) {
+    case 'left-tailed':
+      lowerBound = -Infinity;
+      upperBound = mean + marginOfError;
+      break;
+    case 'right-tailed':
+      lowerBound = mean - marginOfError;
+      upperBound = Infinity;
+      break;
+    case 'two-tailed':
+    default:
+      lowerBound = mean - marginOfError;
+      upperBound = mean + marginOfError;
+      break;
   }
   
   return {
     mean,
     standardError,
     marginOfError,
-    lowerBound: mean - marginOfError,
-    upperBound: mean + marginOfError,
+    lowerBound,
+    upperBound,
     method
   };
 }
@@ -559,7 +633,8 @@ export function calculateTwoSampleMeanCI(
   data1: number[],
   data2: number[],
   confidenceLevel: number,
-  assumeEqualVariances: boolean = false
+  assumeEqualVariances: boolean = false,
+  tailType: TailType = 'two-tailed'
 ): {
   meanDifference: number;
   standardError: number;
@@ -595,15 +670,38 @@ export function calculateTwoSampleMeanCI(
     degreesOfFreedom = dfNumerator / dfDenominator;
   }
   
-  const tCritical = getTCriticalValue(confidenceLevel, Math.round(degreesOfFreedom));
+  // Adjust confidence level for tail type
+  const adjustedConfidenceLevel = tailType === 'two-tailed' ? confidenceLevel : 1 - (1 - confidenceLevel);
+  
+  const tCritical = getTCriticalValue(adjustedConfidenceLevel, Math.round(degreesOfFreedom));
   const marginOfError = tCritical * standardError;
+  
+  // Calculate bounds based on tail type
+  let lowerBound: number;
+  let upperBound: number;
+  
+  switch (tailType) {
+    case 'left-tailed':
+      lowerBound = -Infinity;
+      upperBound = meanDifference + marginOfError;
+      break;
+    case 'right-tailed':
+      lowerBound = meanDifference - marginOfError;
+      upperBound = Infinity;
+      break;
+    case 'two-tailed':
+    default:
+      lowerBound = meanDifference - marginOfError;
+      upperBound = meanDifference + marginOfError;
+      break;
+  }
   
   return {
     meanDifference,
     standardError,
     marginOfError,
-    lowerBound: meanDifference - marginOfError,
-    upperBound: meanDifference + marginOfError,
+    lowerBound,
+    upperBound,
     method: assumeEqualVariances ? 'Pooled variance t-test' : 'Welch-Satterthwaite t-test',
     degreesOfFreedom
   };
@@ -613,7 +711,8 @@ export function calculateTwoSampleMeanCI(
 export function calculatePairedMeanCI(
   before: number[],
   after: number[],
-  confidenceLevel: number
+  confidenceLevel: number,
+  tailType: TailType = 'two-tailed'
 ): {
   meanDifference: number;
   standardError: number;
@@ -629,15 +728,38 @@ export function calculatePairedMeanCI(
   const standardError = stdDevDifference / Math.sqrt(n);
   
   const degreesOfFreedom = n - 1;
-  const tCritical = getTCriticalValue(confidenceLevel, degreesOfFreedom);
+  // Adjust confidence level for tail type
+  const adjustedConfidenceLevel = tailType === 'two-tailed' ? confidenceLevel : 1 - (1 - confidenceLevel);
+  
+  const tCritical = getTCriticalValue(adjustedConfidenceLevel, degreesOfFreedom);
   const marginOfError = tCritical * standardError;
+  
+  // Calculate bounds based on tail type
+  let lowerBound: number;
+  let upperBound: number;
+  
+  switch (tailType) {
+    case 'left-tailed':
+      lowerBound = -Infinity;
+      upperBound = meanDifference + marginOfError;
+      break;
+    case 'right-tailed':
+      lowerBound = meanDifference - marginOfError;
+      upperBound = Infinity;
+      break;
+    case 'two-tailed':
+    default:
+      lowerBound = meanDifference - marginOfError;
+      upperBound = meanDifference + marginOfError;
+      break;
+  }
   
   return {
     meanDifference,
     standardError,
     marginOfError,
-    lowerBound: meanDifference - marginOfError,
-    upperBound: meanDifference + marginOfError,
+    lowerBound,
+    upperBound,
     method: 'Paired t-test'
   };
 }
@@ -942,6 +1064,7 @@ export const calculateTwoProportionConfidenceInterval = (successes1: number, tri
 export const calculateTwoSampleConfidenceInterval = (data1: number[], data2: number[], confidenceLevel: number = 0.95, options: {
   method?: 'pooled' | 'welch' | 'paired';
   isNormal?: boolean;
+  tailType?: TailType;
 } = {}): {
   lower: number;
   upper: number;

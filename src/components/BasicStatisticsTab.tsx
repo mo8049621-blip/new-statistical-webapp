@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Text, Grid, GridItem, Card, CardBody, Select, FormControl, FormLabel, Switch, NumberInput } from '@chakra-ui/react';
+import { Box, Text, Grid, GridItem, Card, CardBody, Select, FormControl, FormLabel, Switch, NumberInput, Input, Alert, AlertIcon, AlertDescription } from '@chakra-ui/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { BasicStatisticsTabProps, BasicStats } from '../types';
 import { generateHistogramData, calculateConfidenceInterval, calculateMean, calculateMedian, calculateMode, calculateVariance, calculateStd, calculateQuartiles } from '../utils/statistics';
@@ -27,12 +27,9 @@ function BasicStatisticsTab({ dataset, basicStats: propsBasicStats }: BasicStati
   } | null>(null);
   
   // Confidence interval calculation options
-  const [ciOptions, setCiOptions] = useState({
-    confidenceLevel: 0.95,
-    isNormal: false,
-    knownVariance: false,
-    populationVariance: 0
-  });
+  const [ciOptions, setCiOptions] = useState({    confidenceLevel: 0.95,    isNormal: false,    knownVariance: false,    populationVariance: 0  });  
+  // Track if we're using sample variance instead of user input
+  const [isUsingSampleVariance, setIsUsingSampleVariance] = useState(false);
   
   const [histogramData, setHistogramData] = useState<{ name: string; value: number }[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState<{ index: number; value: number }[]>([]);
@@ -46,6 +43,10 @@ function BasicStatisticsTab({ dataset, basicStats: propsBasicStats }: BasicStati
   }, [dataset, ciOptions, propsBasicStats]);
 
   const calculateStats = (data: number[]) => {
+    // Check if we should use sample variance instead of user input
+    const isInvalidVariance = ciOptions.knownVariance && (ciOptions.populationVariance <= 0 || isNaN(ciOptions.populationVariance));
+    setIsUsingSampleVariance(isInvalidVariance);
+    
     // Prefer using passed statistics
     if (propsBasicStats) {
       const sortedData = [...data].sort((a, b) => a - b);
@@ -189,15 +190,24 @@ function BasicStatisticsTab({ dataset, basicStats: propsBasicStats }: BasicStati
           {ciOptions.knownVariance && (
             <FormControl>
               <FormLabel>Population Variance Value</FormLabel>
-              <NumberInput
-                min={0}
-                step={0.0001}
+              <Input
+                type="number"
+                min="0"
+                step="any"
                 value={ciOptions.populationVariance}
-                onChange={(value) => handleCIOptionChange('populationVariance', parseFloat(value || '0'))}
+                onChange={(e) => handleCIOptionChange('populationVariance', parseFloat(e.target.value) || 0)}
               />
             </FormControl>
           )}
         </Grid>
+        
+        {/* Show warning if invalid variance is detected */}
+        {isUsingSampleVariance && (
+          <Alert status="warning" mt={4}>
+            <AlertIcon />
+            <AlertDescription>Invalid population variance value provided. Using sample variance instead for confidence interval calculation.</AlertDescription>
+          </Alert>
+        )}
       </Box>
       
       <Grid templateColumns="repeat(auto-fit, minmax(250px, 1fr))" gap={4} mb={8}>

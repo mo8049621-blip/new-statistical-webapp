@@ -203,7 +203,7 @@ const PowerFunction: React.FC<PowerFunctionProps> = ({ dataset }) => {
             <Text fontSize="lg" fontWeight="bold" mb={4}>Analysis Results</Text>
             
             <Stack spacing={3}>
-              {currentPower !== null && (
+              {currentPower !== null && !isNaN(currentPower) && (
                 <Box>
                   <Text fontWeight="bold">Power for Given Effect Size:</Text>
                   <Text fontSize="xl" color="blue.600">{currentPower.toFixed(4)}</Text>
@@ -213,10 +213,10 @@ const PowerFunction: React.FC<PowerFunctionProps> = ({ dataset }) => {
                 </Box>
               )}
               
-              {requiredSampleSize !== null && (
+              {requiredSampleSize !== null && !isNaN(requiredSampleSize) && (
                 <Box>
                   <Text fontWeight="bold">Required Sample Size for 80% Power:</Text>
-                  <Text fontSize="xl" color="green.600">{requiredSampleSize}</Text>
+                  <Text fontSize="xl" color="green.600">{Math.round(requiredSampleSize)}</Text>
                   <Text fontSize="sm" color="gray.500">
                     For effect size (μ₁ - μ₀) = {effectSize}, significance level α = {alpha}, and desired power 0.80
                   </Text>

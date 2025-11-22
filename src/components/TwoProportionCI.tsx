@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { Box, Text, Input, Button, VStack, HStack, Card, CardBody, Table, Tr, Th, Td, Alert, Select, RadioGroup, Radio, Stack } from '@chakra-ui/react';
 import { calculateTwoProportionConfidenceInterval } from '../utils/statistics';
+import { TailType } from '../types';
 
-function TwoProportionCI() {
+interface TwoProportionCIProps {
+  tailType?: TailType;
+  onTailTypeChange?: (tailType: TailType) => void;
+}
+
+function TwoProportionCI({ tailType = 'two-tailed', onTailTypeChange }: TwoProportionCIProps) {
   const [successes1, setSuccesses1] = useState<string>('');
   const [trials1, setTrials1] = useState<string>('');
   const [successes2, setSuccesses2] = useState<string>('');
@@ -41,7 +47,7 @@ function TwoProportionCI() {
         s2,
         t2,
         confidence,
-        { method }
+        { method, tailType }
       );
 
       setResult(ciResult);
@@ -144,6 +150,18 @@ function TwoProportionCI() {
                 </Stack>
               </RadioGroup>
             </Box>
+            <Box flex={1}>
+              <Text fontWeight="medium" mb={2}>Confidence Interval Type</Text>
+              <Select
+                value={tailType}
+                onChange={(e) => onTailTypeChange?.(e.target.value as TailType)}
+                size="lg"
+              >
+                <option value="two-tailed">Two-Tailed</option>
+                <option value="left-tailed">Left-Tailed</option>
+                <option value="right-tailed">Right-Tailed</option>
+              </Select>
+            </Box>
           </HStack>
 
           <Button onClick={handleCalculate} colorScheme="blue" size="lg">
@@ -185,10 +203,22 @@ function TwoProportionCI() {
                   <Th>Margin of Error</Th>
                   <Td>{(result.marginOfError * 100).toFixed(2)}%</Td>
                 </Tr>
-                <Tr>
-                  <Th>Confidence Interval</Th>
-                  <Td>[{(result.lower * 100).toFixed(2)}%, {(result.upper * 100).toFixed(2)}%]</Td>
-                </Tr>
+                {tailType === 'two-tailed' ? (
+                  <Tr>
+                    <Th>Confidence Interval</Th>
+                    <Td>[{(result.lower * 100).toFixed(2)}%, {(result.upper * 100).toFixed(2)}%]</Td>
+                  </Tr>
+                ) : tailType === 'left-tailed' ? (
+                  <Tr>
+                    <Th>Lower Bound</Th>
+                    <Td>{(result.lower * 100).toFixed(2)}%</Td>
+                  </Tr>
+                ) : (
+                  <Tr>
+                    <Th>Upper Bound</Th>
+                    <Td>{(result.upper * 100).toFixed(2)}%</Td>
+                  </Tr>
+                )}
               </tbody>
             </Table>
 

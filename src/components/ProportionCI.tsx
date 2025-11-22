@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, FormControl, FormLabel, Input, Select, Button, Card, CardBody, Grid, Alert } from '@chakra-ui/react';
 import { calculateProportionConfidenceInterval } from '../utils/statistics';
+import { TailType } from '../types';
 
 interface ProportionCIProps {
   dataset?: number[];
+  tailType?: TailType;
+  onTailTypeChange?: (tailType: TailType) => void;
 }
 
-function ProportionCI({ dataset = [] }: ProportionCIProps) {
+function ProportionCI({ dataset = [], tailType = 'two-tailed', onTailTypeChange }: ProportionCIProps) {
   // One proportion parameters
   const [successCount, setSuccessCount] = useState<string>('');
   const [sampleSize, setSampleSize] = useState<string>('');
@@ -36,7 +39,7 @@ function ProportionCI({ dataset = [] }: ProportionCIProps) {
         throw new Error('Please enter valid success count and sample size');
       }
       
-      const result = calculateProportionConfidenceInterval(y, n, cl, { method });
+      const result = calculateProportionConfidenceInterval(y, n, cl, { method, tailType });
       setResults(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Calculation error');
@@ -85,6 +88,17 @@ function ProportionCI({ dataset = [] }: ProportionCIProps) {
           >
             <option value="wald">Wald Interval</option>
             <option value="wilson">Wilson Score Interval</option>
+          </Select>
+        </FormControl>
+        <FormControl>
+          <FormLabel fontSize="sm">Confidence Interval Type</FormLabel>
+          <Select
+            value={tailType}
+            onChange={(e) => onTailTypeChange?.(e.target.value as TailType)}
+          >
+            <option value="two-tailed">Two-Tailed</option>
+            <option value="left-tailed">Left-Tailed</option>
+            <option value="right-tailed">Right-Tailed</option>
           </Select>
         </FormControl>
       </Grid>
@@ -137,13 +151,19 @@ function ProportionCI({ dataset = [] }: ProportionCIProps) {
             
             <Box mt={4}>
               <Text fontSize="sm" color="gray.600">
-                {confidenceLevel === '0.95' ? '95%' : confidenceLevel === '0.90' ? '90%' : '99%'} Confidence Interval:
+                {confidenceLevel === '0.95' ? '95%' : confidenceLevel === '0.90' ? '90%' : '99%'} {tailType === 'two-tailed' ? 'Confidence Interval' : tailType === 'left-tailed' ? 'Lower Bound' : 'Upper Bound'}:
               </Text>
               <Text fontWeight="bold" fontSize="lg">
-                [
-                {results.lower !== undefined ? results.lower.toFixed(4) : 'N/A'},
-                {results.upper !== undefined ? results.upper.toFixed(4) : 'N/A'}
-                ]
+                {tailType === 'two-tailed' ? (
+                  `[
+                  ${results.lower !== undefined ? results.lower.toFixed(4) : 'N/A'},
+                  ${results.upper !== undefined ? results.upper.toFixed(4) : 'N/A'}
+                  ]`
+                ) : tailType === 'left-tailed' ? (
+                  results.lower !== undefined ? results.lower.toFixed(4) : 'N/A'
+                ) : (
+                  results.upper !== undefined ? results.upper.toFixed(4) : 'N/A'
+                )}
               </Text>
             </Box>
           </CardBody>

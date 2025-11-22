@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, Grid, Card, CardBody, Select, FormControl, FormLabel, Input, Button, Alert, ButtonGroup } from '@chakra-ui/react';
 import { calculateTwoSampleConfidenceInterval } from '../utils/statistics';
+import { TailType } from '../types';
 
 interface TwoSampleMeanCIProps {
   dataset1?: number[];
   dataset2?: number[];
+  tailType?: TailType;
+  onTailTypeChange?: (tailType: TailType) => void;
 }
 
-function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps) {
+function TwoSampleMeanCI({ dataset1 = [], dataset2 = [], tailType = 'two-tailed', onTailTypeChange }: TwoSampleMeanCIProps) {
   // Data input state
   const [sample1Data, setSample1Data] = useState<string>('');
   const [sample2Data, setSample2Data] = useState<string>('');
@@ -68,7 +71,7 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
           data1,
           data2,
           confLevel,
-          { method }
+          { method, tailType }
         );
         
         setResult(ciResult);
@@ -202,6 +205,17 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
                 <option value="welch">Not Assuming Equal Variances (Welch)</option>
               </Select>
             </FormControl>
+            <FormControl>
+              <FormLabel>Confidence Interval Type</FormLabel>
+              <Select
+                value={tailType}
+                onChange={(e) => onTailTypeChange?.(e.target.value as TailType)}
+              >
+                <option value="two-tailed">Two-Tailed</option>
+                <option value="left-tailed">Left-Tailed</option>
+                <option value="right-tailed">Right-Tailed</option>
+              </Select>
+            </FormControl>
           </Grid>
           
           <Button onClick={calculateTwoSampleCI} mt={6} colorScheme="blue" width="100%">
@@ -219,7 +233,6 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
       {result && (
         <Box mt={6}>
           <Text fontSize="lg" fontWeight="bold" mb={4}>Calculation Results</Text>
-          
           <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
             <Card>
               <CardBody>
@@ -227,18 +240,20 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
                 <Text fontSize="2xl" fontWeight="bold">{result.meanDiff.toFixed(4)}</Text>
               </CardBody>
             </Card>
-            <Card>
-              <CardBody>
-                <Text fontSize="sm" color="gray.500">CI Lower Bound</Text>
-                <Text fontSize="2xl" fontWeight="bold">{result.lower.toFixed(4)}</Text>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody>
-                <Text fontSize="sm" color="gray.500">CI Upper Bound</Text>
-                <Text fontSize="2xl" fontWeight="bold">{result.upper.toFixed(4)}</Text>
-              </CardBody>
-            </Card>
+            <>
+              <Card>
+                <CardBody>
+                  <Text fontSize="sm" color="gray.500">CI Lower Bound</Text>
+                  <Text fontSize="2xl" fontWeight="bold">{result.lower.toFixed(4)}</Text>
+                </CardBody>
+              </Card>
+              <Card>
+                <CardBody>
+                  <Text fontSize="sm" color="gray.500">CI Upper Bound</Text>
+                  <Text fontSize="2xl" fontWeight="bold">{result.upper.toFixed(4)}</Text>
+                </CardBody>
+              </Card>
+            </>
             <Card>
               <CardBody>
                 <Text fontSize="sm" color="gray.500">Margin of Error</Text>

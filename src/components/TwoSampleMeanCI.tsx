@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, Grid, Card, CardBody, Select, FormControl, FormLabel, Input, Button, Alert, ButtonGroup } from '@chakra-ui/react';
 import { calculateTwoSampleConfidenceInterval } from '../utils/statistics';
+import { TailType } from '../types';
 
 interface TwoSampleMeanCIProps {
   dataset1?: number[];
   dataset2?: number[];
+  tailType?: TailType;
+  onTailTypeChange?: (tailType: TailType) => void;
 }
 
-function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps) {
+function TwoSampleMeanCI({ dataset1 = [], dataset2 = [], tailType = 'two-tailed', onTailTypeChange }: TwoSampleMeanCIProps) {
   // Data input state
   const [sample1Data, setSample1Data] = useState<string>('');
   const [sample2Data, setSample2Data] = useState<string>('');
@@ -68,7 +71,10 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
           data1,
           data2,
           confLevel,
-          { method }
+          {
+            method,
+            tailType: tailType
+          }
         );
         
         setResult(ciResult);
@@ -107,6 +113,33 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
               Input Statistics
             </Button>
           </ButtonGroup>
+          
+          <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4} mt={4}>
+            <FormControl>
+              <FormLabel>Confidence Level</FormLabel>
+              <Select
+                value={confidenceLevel}
+                onChange={(e) => setConfidenceLevel(e.target.value)}
+              >
+                <option value="0.90">90%</option>
+                <option value="0.95">95%</option>
+                <option value="0.99">99%</option>
+                <option value="0.999">99.9%</option>
+              </Select>
+            </FormControl>
+            
+            <FormControl>
+              <FormLabel>Confidence Interval Type</FormLabel>
+              <Select
+                value={tailType}
+                onChange={(e) => onTailTypeChange?.(e.target.value as TailType)}
+              >
+                <option value="two-tailed">Two-Tailed</option>
+                <option value="left-tailed">Left-Tailed (Lower Bound)</option>
+                <option value="right-tailed">Right-Tailed (Upper Bound)</option>
+              </Select>
+            </FormControl>
+          </Grid>
           
           {inputMode === 'data' && (
             <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
@@ -182,16 +215,7 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
             </Grid>
           )}
           
-          <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4} mt={6}>
-            <FormControl>
-              <FormLabel>Confidence Level</FormLabel>
-              <Select value={confidenceLevel} onChange={(e) => setConfidenceLevel(e.target.value)}>
-                <option value="0.90">90%</option>
-                <option value="0.95">95%</option>
-                <option value="0.99">99%</option>
-              </Select>
-            </FormControl>
-            
+          <Grid templateColumns={{ base: '1fr' }} gap={4} mt={2}>
             <FormControl>
               <FormLabel>Variance Treatment Method</FormLabel>
               <Select
@@ -227,6 +251,8 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
                 <Text fontSize="2xl" fontWeight="bold">{result.meanDiff.toFixed(4)}</Text>
               </CardBody>
             </Card>
+            
+            {/* Always show both lower and upper bounds regardless of tailType */}
             <Card>
               <CardBody>
                 <Text fontSize="sm" color="gray.500">CI Lower Bound</Text>
@@ -239,6 +265,7 @@ function TwoSampleMeanCI({ dataset1 = [], dataset2 = [] }: TwoSampleMeanCIProps)
                 <Text fontSize="2xl" fontWeight="bold">{result.upper.toFixed(4)}</Text>
               </CardBody>
             </Card>
+            
             <Card>
               <CardBody>
                 <Text fontSize="sm" color="gray.500">Margin of Error</Text>

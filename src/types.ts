@@ -55,6 +55,9 @@ export interface MLEMoMTabProps {
   basicStats?: BasicStats | null;
 };
 
+// Tail type for confidence intervals
+export type TailType = 'two-tailed' | 'left-tailed' | 'right-tailed';
+
 // Confidence intervals container props interface
 export interface ConfidenceIntervalsContainerProps {
   dataset: number[];
@@ -63,6 +66,8 @@ export interface ConfidenceIntervalsContainerProps {
   isGeneratedDataset?: boolean;
   distributionInfo?: DistributionInfo | null;
   basicStats?: BasicStats | null;
+  tailType?: TailType;
+  onTailTypeChange?: (tailType: TailType) => void;
 };
 
 // Hypothesis testing props interface
@@ -96,4 +101,13 @@ export interface DistributionConfig {
 export interface EstimationResult {
   method: string;
   params: Record<string, number>;
+};
+
+// Confidence interval result interface
+export interface ConfidenceIntervalResult {
+  lowerBound: number;
+  upperBound: number;
+  tailType: TailType;
+  confidenceLevel: number;
+  method: string;
 };
