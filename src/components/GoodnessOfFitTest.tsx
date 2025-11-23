@@ -149,6 +149,15 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
       parameterNames: ['lambda'],
       formula: 'P(X=k) = (λ^k * e^(-λ))/k!',
     },
+    {
+      type: 'binomial',
+      name: 'Binomial Distribution',
+      description: 'Discrete distribution for number of successes in fixed trials',
+      supportedTests: ['kolmogorov-smirnov', 'chi-square'],
+      requiresParameterEstimation: true,
+      parameterNames: ['n (trials)', 'p (probability)'],
+      formula: 'P(X=k) = C(n,k) * p^k * (1-p)^(n-k)',
+    },
   ];
 
   const testMethodOptions: TestMethodOption[] = [
@@ -156,7 +165,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
       type: 'kolmogorov-smirnov',
       name: 'Kolmogorov-Smirnov Test',
       description: 'Non-parametric test comparing empirical and theoretical CDFs',
-      applicableDistributions: ['normal', 'uniform', 'exponential', 'poisson'],
+      applicableDistributions: ['normal', 'uniform', 'exponential', 'poisson', 'gamma', 'binomial'],
       assumptions: [
         'Continuous distribution',
         'Independent observations',
@@ -177,7 +186,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
       type: 'chi-square',
       name: 'Chi-Square Goodness-of-Fit Test',
       description: 'Test based on comparing observed vs expected frequencies',
-      applicableDistributions: ['normal', 'uniform', 'exponential', 'poisson'],
+      applicableDistributions: ['normal', 'uniform', 'exponential', 'poisson', 'gamma', 'binomial'],
       assumptions: [
         'Independent observations',
         'Expected frequency ≥ 5 in each bin',
@@ -281,6 +290,43 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
         case 'poisson': {
           const mean = calculateMean(dataset);
           params = { lambda: mean };
+          break;
+        }
+        case 'gamma': {
+          // 使用矩方法估计伽马分布参数
+          const mean = calculateMean(dataset);
+          const variance = calculateVariance(dataset);
+          // 避免除零错误
+          if (variance <= 0 || mean <= 0) {
+            console.warn('Invalid mean or variance for gamma distribution, using fallback');
+            params = { shape: 2, scale: 1 };
+          } else {
+            const shape = mean * mean / variance; // k
+            const scale = variance / mean; // θ
+            params = { shape, scale };
+          }
+          break;
+        }
+        case 'binomial': {
+          // 对于二项分布，我们需要估计n和p
+          // 这通常需要知道最大试验次数或使用其他方法
+          const maxValue = Math.max(...dataset);
+          const mean = calculateMean(dataset);
+          
+          // 简单的估计方法：假设n为观察到的最大值
+          // p = mean / n
+          let n = Math.max(10, Math.ceil(maxValue * 1.2)); // 确保n至少为10
+          let p = mean / n;
+          
+          // 确保p在有效范围内
+          if (p <= 0 || p >= 1) {
+            p = mean / (maxValue + 1);
+          }
+          if (p <= 0 || p >= 1) {
+            p = 0.5; // 默认值
+          }
+          
+          params = { n, p };
           break;
         }
         default:
@@ -452,6 +498,42 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                 }
                 break;
               }
+
+              case 'binomial': {
+                // 对于二项分布，我们需要估计n和p
+                const maxValue = Math.max(...dataset);
+                const minValue = Math.min(...dataset);
+                const mean = calculateMean(dataset);
+                
+                // 检查数据是否适合二项分布
+                const hasNonIntegers = dataset.some(val => !Number.isInteger(val));
+                const hasNegativeValues = dataset.some(val => val < 0);
+                
+                // 如果数据包含非整数或负值，这可能不是二项分布，使用保守估计
+                if (hasNonIntegers || hasNegativeValues) {
+                  // 返回不太可能匹配的值，使评分降低
+                  paramsToUse = { n: 100, p: 0.5 };
+                  break;
+                }
+                
+                // 改进的n估计方法
+                // 1. 使用最大值的1.2倍作为初始估计，但限制最大值
+                let n = Math.min(Math.max(10, Math.ceil(maxValue * 1.2)), dataset.length * 2);
+                
+                // 2. 确保n足够大以支持观察到的均值
+                if (mean > n * 0.9) {
+                  n = Math.max(n, Math.ceil(mean * 1.1));
+                }
+                
+                // 3. 计算p值
+                let p = mean / n;
+                
+                // 4. 确保p在合理范围内
+                p = Math.min(0.99, Math.max(0.01, p));
+                
+                paramsToUse = { n, p };
+                break;
+              }
             }
 
             // 执行测试
@@ -498,12 +580,27 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
         }
       }
 
+      // 检查数据是否可能是离散的
+      const uniqueValues = new Set(dataset);
+      const isDataPotentiallyDiscrete = uniqueValues.size <= Math.sqrt(dataset.length) && 
+                                        dataset.every(val => Number.isInteger(val));
+      
+      // 定义分布类型（连续/离散）
+      const distributionTypeMap = {
+        'normal': { isDiscrete: false },
+        'uniform': { isDiscrete: false },
+        'exponential': { isDiscrete: false },
+        'poisson': { isDiscrete: true },
+        'binomial': { isDiscrete: true }
+      };
+      
       // 按p-value排序并应用综合评分算法
       const sortedResults = testResults
         .filter(result => !isNaN(result.pValue))
         .map(result => {
           // 计算综合评分，p-value权重70%，显著性权重30%
-          const pValueScore = result.pValue;
+          let pValueScore = result.pValue;
+          
           // 给不同测试方法适当的权重
           const methodWeightMap = {
             'kolmogorov-smirnov': 1.0,
@@ -513,6 +610,26 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
           } as const;
           
           const methodWeight = methodWeightMap[result.testType as keyof typeof methodWeightMap] || 1.0;
+          
+          // 对分布类型添加惩罚/奖励
+           const distType = distributionTypeMap[result.distributionType as keyof typeof distributionTypeMap];
+           let distributionTypePenalty = 0;
+          
+          // 如果数据明显是连续的，惩罚离散分布
+          if (distType && distType.isDiscrete && !isDataPotentiallyDiscrete) {
+            distributionTypePenalty = 0.25; // 对离散分布进行惩罚
+          }
+          
+          // 对于二项分布，添加额外的合理性检查
+          if (result.distributionType === 'binomial') {
+            // 如果测试方法是卡方，并且p-value很低，可能是错误匹配
+            if (result.testType === 'chi-square' && result.pValue < 0.05) {
+              distributionTypePenalty += 0.15; // 额外惩罚
+            }
+          }
+          
+          // 应用惩罚
+          pValueScore = Math.max(0, pValueScore - distributionTypePenalty);
           
           const significanceBonus = result.pValue > 0.1 ? 0.05 : 0; // 对高p-value给予小幅奖励
           const combinedScore = (pValueScore + significanceBonus) * methodWeight;
@@ -732,15 +849,15 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
               {/* Auto Test Controls */}
               <Card>
                 <CardBody>
-                  <Text fontSize="lg" fontWeight="bold" mb={4}>自动拟合优度检验</Text>
+                  <Text fontSize="lg" fontWeight="bold" mb={4}>Automatic Goodness-of-Fit Test</Text>
                   <Text fontSize="sm" color="gray.600" mb={4}>
-                    自动测试所有支持的分布类型和检验方法，基于p-value为您推荐最佳拟合的分布类型。
+                    Automatically test all supported distribution types and test methods, and recommend the best-fitting distribution type based on p-value.
                   </Text>
                   
                   <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
                     {/* Significance Level */}
                     <FormControl>
-                      <FormLabel>显著性水平 (α)</FormLabel>
+                      <FormLabel>Significance Level (α)</FormLabel>
                       <Select 
                         value={significanceLevel} 
                         onChange={(e) => setSignificanceLevel(e.target.value)}
@@ -753,7 +870,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
 
                     {/* Chi-square specific: Number of bins */}
                     <FormControl>
-                      <FormLabel>卡方检验的分组数量</FormLabel>
+                      <FormLabel>Chi-Square Test Bins</FormLabel>
                       <NumberInput
                         min={5}
                         max={50}
@@ -772,9 +889,9 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                     size="lg"
                     mt={4}
                     isLoading={autoTestRunning}
-                    loadingText="正在进行自动测试..."
+                    loadingText="Running auto test..."
                   >
-                    开始自动测试
+                    Start Auto Test
                   </Button>
                 </CardBody>
               </Card>
@@ -783,24 +900,24 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
               {recommendedDistribution && (
                 <Card>
                   <CardBody>
-                    <Text fontSize="lg" fontWeight="bold" mb={4}>推荐结果</Text>
+                    <Text fontSize="lg" fontWeight="bold" mb={4}>Recommended Result</Text>
                     <Box p={4} bgColor="green.50" borderRadius={4} border="1px" borderColor="green.200">
                       <Text fontWeight="bold" color="green.700" mb={2}>
-                        🏆 最佳拟合分布
+                        🏆 Best Fitting Distribution
                       </Text>
                       <Text fontSize="lg" fontWeight="semibold" mb={2}>
                         {recommendedDistribution.distributionName}
                       </Text>
                       <Text fontSize="sm" color="green.600" mb={3}>
-                        推荐理由：p-value = {recommendedDistribution.pValue.toFixed(4)} (最高)
+                        Recommendation reason: p-value = {recommendedDistribution.pValue.toFixed(4)} (highest)
                       </Text>
                       <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
                         <Box>
-                          <Text fontSize="sm" fontWeight="bold">推荐使用的检验方法:</Text>
+                          <Text fontSize="sm" fontWeight="bold">Recommended test method:</Text>
                           <Text fontSize="sm">{recommendedDistribution.testName}</Text>
                         </Box>
                         <Box>
-                          <Text fontSize="sm" fontWeight="bold">置信水平:</Text>
+                          <Text fontSize="sm" fontWeight="bold">Confidence level:</Text>
                           <Text fontSize="sm">{(recommendedDistribution.confidenceLevel * 100).toFixed(1)}%</Text>
                         </Box>
                       </Grid>
@@ -810,26 +927,26 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                     {distributionInfo && actualDistributionAccuracy && (
                       <Box mt={4} p={4} bgColor="blue.50" borderRadius={4} border="1px" borderColor="blue.200">
                         <Text fontWeight="bold" color="blue.700" mb={2}>
-                          📊 实际分布验证
+                          📊 Actual Distribution Verification
                         </Text>
                         <Text fontSize="sm" fontWeight="semibold" mb={2}>
-                          实际生成的数据分布：{distributionInfo.name}
+                          Actual generated data distribution: {distributionInfo.name}
                         </Text>
                         <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={4}>
                           <Box>
-                            <Text fontSize="sm" fontWeight="bold">准确性评估:</Text>
+                            <Text fontSize="sm" fontWeight="bold">Accuracy assessment:</Text>
                             <Text fontSize="sm" color={actualDistributionAccuracy.isRecommended ? "green.600" : "orange.600"}>
-                              {actualDistributionAccuracy.isRecommended ? "✅ 算法正确推荐" : "⚠️ 算法推荐有误"}
+                              {actualDistributionAccuracy.isRecommended ? "✅ Algorithm correctly recommended" : "⚠️ Algorithm recommended incorrectly"}
                             </Text>
                           </Box>
                           <Box>
-                            <Text fontSize="sm" fontWeight="bold">实际分布排名:</Text>
+                            <Text fontSize="sm" fontWeight="bold">Actual distribution rank:</Text>
                             <Text fontSize="sm">
-                              第 {actualDistributionAccuracy.rank} 名
+                              Rank {actualDistributionAccuracy.rank}
                             </Text>
                           </Box>
                           <Box>
-                            <Text fontSize="sm" fontWeight="bold">实际分布p-value:</Text>
+                            <Text fontSize="sm" fontWeight="bold">Actual distribution p-value:</Text>
                             <Text fontSize="sm">
                               {actualDistributionAccuracy.pValue.toFixed(4)}
                             </Text>
@@ -839,14 +956,14 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                           <Alert status="success" mt={3} size="sm">
                             <AlertIcon />
                             <Text fontSize="sm">
-                              🎉 很好！算法成功识别出正确的数据分布类型。
+                              🎉 Great! The algorithm successfully identified the correct data distribution type.
                             </Text>
                           </Alert>
                         ) : (
                           <Alert status="warning" mt={3} size="sm">
                             <AlertIcon />
                             <Text fontSize="sm">
-                              ⚠️ 算法推荐了不同的分布类型。这可能是由于样本量不足、分布参数估计误差或其他统计因素造成的。
+                              ⚠️ The algorithm recommended a different distribution type. This may be due to insufficient sample size, distribution parameter estimation errors, or other statistical factors.
                             </Text>
                           </Alert>
                         )}
@@ -857,7 +974,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                       <Alert status="info" mt={4} size="sm">
                         <AlertIcon />
                         <Text fontSize="sm">
-                          💡 这是手动输入或上传的数据，算法基于统计测试结果推荐最拟合的分布类型。
+                          💡 This is manually entered or uploaded data, and the algorithm recommends the best-fitting distribution type based on statistical test results.
                         </Text>
                       </Alert>
                     )}
@@ -869,18 +986,18 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
               {autoTestResults.length > 0 && (
                 <Card>
                   <CardBody>
-                    <Text fontSize="lg" fontWeight="bold" mb={4}>详细测试结果</Text>
+                    <Text fontSize="lg" fontWeight="bold" mb={4}>Detailed Test Results</Text>
                     <Box overflowX="auto">
                       <Table variant="simple" size="sm">
                         <Thead>
                           <Tr>
-                            <Th>排名</Th>
-                            <Th>分布类型</Th>
-                            <Th>检验方法</Th>
-                            <Th>检验统计量</Th>
+                            <Th>Rank</Th>
+                            <Th>Distribution Type</Th>
+                            <Th>Test Method</Th>
+                            <Th>Test Statistic</Th>
                             <Th>p-value</Th>
-                            <Th>结果</Th>
-                            <Th>置信水平</Th>
+                            <Th>Result</Th>
+                            <Th>Confidence Level</Th>
                           </Tr>
                         </Thead>
                         <Tbody>
@@ -902,7 +1019,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                                   {result.distributionName}
                                   {result.isActualDistribution && (
                                     <Badge ml={2} colorScheme="blue" size="sm">
-                                      实际分布
+                                      Actual Distribution
                                     </Badge>
                                   )}
                                 </Text>
@@ -917,7 +1034,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                               </Td>
                               <Td>
                                 <Badge colorScheme={result.isReject ? 'red' : 'green'}>
-                                  {result.isReject ? '拒绝原假设' : '接受原假设'}
+                                  {result.isReject ? 'Reject H₀' : 'Fail to Reject H₀'}
                                 </Badge>
                               </Td>
                               <Td>{(result.confidenceLevel * 100).toFixed(1)}%</Td>
@@ -930,7 +1047,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                     <Alert status="info" mt={4}>
                       <AlertIcon />
                       <Text fontSize="sm">
-                        <strong>说明：</strong>p-value越大表示数据越符合该分布。排名第一的结果是最推荐的分布类型。
+                        <strong>Note:</strong> A larger p-value indicates that the data better fits the distribution. The result ranked first is the most recommended distribution type.
                       </Text>
                     </Alert>
                   </CardBody>

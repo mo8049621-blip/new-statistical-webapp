@@ -101,7 +101,7 @@ export interface EstimationResult {
 // Goodness-of-fit test interfaces
 export type GoFTestType = 'kolmogorov-smirnov' | 'chi-square' | 'anderson-darling' | 'shapiro-wilk' | 'jarque-bera';
 
-export type DistributionTypeForGoF = 'normal' | 'uniform' | 'exponential' | 'poisson' | 'gamma' | 'beta' | 'lognormal' | 'weibull';
+export type DistributionTypeForGoF = 'normal' | 'uniform' | 'exponential' | 'poisson' | 'gamma' | 'beta' | 'lognormal' | 'weibull' | 'binomial';
 
 // Goodness-of-fit test result interface
 export interface GoFTestResult {

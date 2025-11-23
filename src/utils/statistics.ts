@@ -1793,6 +1793,32 @@ const gammaFunction = (z: number): number => {
   const t = z + g + 0.5;
   
   return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+}
+
+// Binomial CDF function
+function binomialCDF(k: number, n: number, p: number): number {
+  if (k < 0) return 0;
+  if (k >= n) return 1;
+  
+  let cdf = 0;
+  for (let i = 0; i <= k; i++) {
+    cdf += binomialPMF(i, n, p);
+  }
+  return Math.min(1, Math.max(0, cdf));
+}
+
+// Gamma CDF function using incomplete gamma function
+function gammaCDF(x: number, shape: number, rate: number): number {
+  if (x <= 0) return 0;
+  
+  const scaledX = rate * x;
+  
+  // Use the relationship between gamma CDF and incomplete gamma function
+  // P(X ≤ x) = γ(s, rate*x) / Γ(s)
+  const numerator = lowerIncompleteGamma(shape, scaledX);
+  const denominator = gamma(shape);
+  
+  return Math.min(1, Math.max(0, numerator / denominator));
 };
 
 /**
@@ -1878,6 +1904,34 @@ export const calculateKolmogorovSmirnovTest = (
         // 对于泊松分布，取整处理
         const k = Math.floor(x);
         return k < 0 ? 0 : poissonCDF(k, lambda);
+      };
+      break;
+    }
+    case 'gamma': {
+      const shape = parameters.shape || 1;
+      const rate = parameters.rate || 1;
+      theoreticalCDF = (x: number) => {
+        if (x < 0) return 0;
+        // 使用正则化不完全伽马函数计算伽马分布的CDF
+        const scaledX = rate * x;
+        return lowerIncompleteGamma(shape, scaledX) / gamma(shape);
+      };
+      break;
+    }
+    case 'binomial': {
+      const n = parameters.n || 10;
+      const p = parameters.p || 0.5;
+      theoreticalCDF = (x: number) => {
+        // 对于二项分布，取整处理
+        const k = Math.floor(x);
+        if (k < 0) return 0;
+        if (k >= n) return 1;
+        // 计算累积概率
+        let cdf = 0;
+        for (let i = 0; i <= k; i++) {
+          cdf += binomialPMF(i, n, p);
+        }
+        return cdf;
       };
       break;
     }
@@ -1979,6 +2033,24 @@ export const calculateChiSquareTest = (
         const cdfMax = poissonCDF(Math.floor(binMax), lambda);
         const cdfMin = poissonCDF(Math.floor(binMin) - 1, lambda);
         expected = n * (cdfMax - cdfMin);
+        break;
+      }
+      case 'gamma': {
+        const shape = parameters.shape || 1;
+        const rate = parameters.rate || 1;
+        const cdfMax = gammaCDF(binMax, shape, rate);
+        const cdfMin = gammaCDF(binMin, shape, rate);
+        expected = n * (cdfMax - cdfMin);
+        break;
+      }
+      case 'binomial': {
+        const n_params = parameters.n || 10;
+        const p = parameters.p || 0.5;
+        const kMin = Math.floor(binMin);
+        const kMax = Math.floor(binMax);
+        const cdfMax_val = binomialCDF(Math.min(n_params, kMax), n_params, p);
+        const cdfMin_val = binomialCDF(Math.max(0, kMin - 1), n_params, p);
+        expected = n * (cdfMax_val - cdfMin_val);
         break;
       }
       default:
@@ -2155,3 +2227,67 @@ export const executeGoFTest = (
     throw new Error(`GoF test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
+
+// Binomial PMF function
+function binomialPMF(k: number, n: number, p: number): number {
+  if (k < 0 || k > n) return 0;
+  if (p < 0 || p > 1) return 0;
+  
+  const combination = factorial(n) / (factorial(k) * factorial(n - k));
+  return combination * Math.pow(p, k) * Math.pow(1 - p, n - k);
+}
+
+// Lower incomplete gamma function using series expansion
+function lowerIncompleteGamma(s: number, x: number): number {
+  if (x <= 0) return 0;
+  if (s <= 0) return NaN;
+  
+  const eps = 1e-10;
+  let sum = 0;
+  let term = x / s;
+  let n = 1;
+  
+  // Series expansion for x < s + 1
+  while (Math.abs(term) > eps) {
+    sum += term;
+    term *= x / (s + n);
+    n++;
+    
+    // 防止无限循环
+    if (n > 1000) break;
+  }
+  
+  return Math.pow(s, -1) * Math.pow(x, s) * Math.exp(-x) * sum;
+}
+
+// Gamma function using Lanczos approximation
+function gamma(z: number): number {
+  const p = [
+    676.5203681218851,
+   -1259.1392167224028,
+     771.32342877765313,
+    -176.61502916214059,
+      12.507343278686905,
+      -0.13857109526572012,
+       9.9843695780195716e-6,
+       1.5056327351493116e-7
+  ];
+  
+  const g = 7;
+  
+  if (z < 0.5) {
+    // Reflection formula
+    return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+  }
+  
+  z -= 1;
+  let x = 0.99999999999980993;
+  
+  for (let i = 0; i < p.length; i++) {
+    x += p[i] / (z + i + 1);
+  }
+  
+  const t = z + g + 0.5;
+  
+  return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+}
