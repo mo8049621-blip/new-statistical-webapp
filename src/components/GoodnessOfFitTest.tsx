@@ -49,22 +49,9 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import {
-  executeGoFTest,
-  calculateMLE,
-  calculateMean,
-  calculateStd,
-  calculateVariance,
-  generateHistogramData,
-} from '../utils/statistics';
-import {
-  GoodnessOfFitTestProps,
-  GoFTestType,
-  DistributionTypeForGoF,
-  GoFTestResult,
-  TestDistributionOption,
-  TestMethodOption,
-} from '../types';
+import { executeGoFTest, calculateMLE, calculateMean, calculateStd, calculateVariance, generateHistogramData, calculateQQPlotData } from '../utils/statistics';
+import { GoodnessOfFitTestProps, GoFTestType, DistributionTypeForGoF, GoFTestResult, TestDistributionOption, TestMethodOption } from '../types';
+import QQPlot from './QQPlot';
 
 const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
   dataset,
@@ -87,6 +74,7 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
   const [estimatedParams, setEstimatedParams] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [histogramData, setHistogramData] = useState<any[]>([]);
+  const [qqPlotData, setQQPlotData] = useState<{ theoretical: number; empirical: number }[]>([]);
 
   // Auto-test results state
   const [autoTestResults, setAutoTestResults] = useState<Array<{
@@ -379,6 +367,20 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
       );
 
       setTestResult(result);
+
+      // 计算QQ图数据（仅支持正态分布）
+      if (distributionType === 'normal') {
+        try {
+          const paramsToUse = useCustomParameters ? customParams : estimatedParams;
+          const qqData = calculateQQPlotData(dataset, 'normal', paramsToUse);
+          setQQPlotData(qqData);
+        } catch (err) {
+          console.error('Error calculating QQ plot data:', err);
+          setQQPlotData([]);
+        }
+      } else {
+        setQQPlotData([]); // 非正态分布清除QQ图数据
+      }
 
       if (onTestComplete) {
         onTestComplete(result);
@@ -1146,6 +1148,14 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                     </Box>
                   </CardBody>
                 </Card>
+              )}
+              
+              {/* QQ Plot (only for normal distribution) */}
+              {distributionType === 'normal' && qqPlotData.length > 0 && (
+                <QQPlot 
+                  qqData={qqPlotData}
+                  title={`QQ Plot - ${getCurrentDistribution()?.name || 'Normal Distribution'}`}
+                />
               )}
             </VStack>
           </TabPanel>
