@@ -225,8 +225,10 @@ app.post('/api/distributions/:name/calculate', (req, res) => {
       case 'gamma':
         if (type === 'pdf') {
           result = gammaPDF(x, parameters.shape, parameters.rate);
+        } else if (type === 'cdf') {
+          result = gammaCDF(x, parameters.shape, parameters.rate);
         } else {
-          return res.status(400).json({ error: 'Only PDF calculation available for gamma distribution' });
+          return res.status(400).json({ error: 'Invalid calculation type' });
         }
         break;
       default:
@@ -287,6 +289,9 @@ app.post('/api/distributions/:name/generate', (req, res) => {
         break;
       case 'exponential':
         data = generateExponential(parameters.lambda, count);
+        break;
+      case 'gamma':
+        data = generateGamma(parameters.shape, parameters.rate, count);
         break;
       default:
         return res.status(400).json({ error: 'Generation not implemented for this distribution' });
@@ -456,10 +461,107 @@ function generateExponential(lambda = 1, count = 1000) {
   return data;
 }
 
+function generateGamma(shape, rate = 1, count = 1000) {
+  const data = [];
+  for (let i = 0; i < count; i++) {
+    if (shape < 1) {
+      // 使用Johnk算法处理shape < 1的情况
+      const c = 1 / shape;
+      while (true) {
+        const u = Math.random();
+        const v = Math.random();
+        const x = Math.pow(u, c);
+        const y = Math.pow(v, 1 / (1 - shape));
+        if (x + y <= 1) {
+          const e = -Math.log(Math.random());
+          data.push(-e * Math.log(x) / rate);
+          break;
+        }
+      }
+    } else {
+      // 使用Marsaglia和Tsang算法处理shape >= 1的情况
+      const d = shape - 1/3;
+      const c = 1 / Math.sqrt(9 * d);
+      while (true) {
+        let x, v;
+        do {
+          // 生成标准正态分布样本
+          let u1 = 0, u2 = 0;
+          while (u1 === 0) u1 = Math.random();
+          while (u2 === 0) u2 = Math.random();
+          x = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+          v = Math.pow(1 + c * x, 3);
+        } while (v <= 0);
+        
+        const u = Math.random();
+        if (u < 1 - 0.0331 * Math.pow(x, 4)) {
+          data.push(d * v / rate);
+          break;
+        }
+        if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) {
+          data.push(d * v / rate);
+          break;
+        }
+      }
+    }
+  }
+  return data;
+}
+
 // Gamma Distribution
 function gammaPDF(x, shape, rate) {
   if (x < 0) return 0;
   return (Math.pow(rate, shape) * Math.pow(x, shape - 1) * Math.exp(-rate * x)) / gamma(shape);
+}
+
+function gammaCDF(x, shape, rate) {
+  if (x < 0) return 0;
+  // 使用不完全伽马函数计算CDF
+  // gammaCDF(x, k, θ) = P(k, x/θ) 其中P是正则化不完全伽马函数
+  const scaledX = rate * x;
+  return lowerIncompleteGamma(shape, scaledX) / gamma(shape);
+}
+
+// 不完全伽马函数的数值实现
+function lowerIncompleteGamma(s, x) {
+  if (x <= 0) return 0;
+  if (x < s + 1) {
+    // 使用级数展开
+    let sum = 1 / s;
+    let term = 1 / s;
+    for (let n = 1; n < 1000; n++) {
+      term *= x / (s + n);
+      sum += term;
+      if (term < 1e-15) break;
+    }
+    return Math.pow(x, s) * Math.exp(-x) * sum;
+  } else {
+    // 使用连续分数展开（Lentz算法）
+    let a0 = 0;
+    let b0 = 1;
+    let a1 = 1;
+    let b1 = x;
+    let fac = 1;
+    let g = b1;
+    let gold = 0;
+    
+    for (let n = 1; n < 1000; n++) {
+      let an = n - s;
+      a0 = (a1 + a0 * an) * fac;
+      b0 = (b1 + b0 * an) * fac;
+      let anf = n * fac;
+      a1 = x * a0 + anf * a1;
+      b1 = x * b0 + anf * b1;
+      if (b1 !== 0) {
+        fac = 1 / b1;
+        g = a1 * fac;
+        if (Math.abs((g - gold) / g) < 1e-15) break;
+        gold = g;
+      }
+    }
+    
+    return gamma(s) - Math.exp(s * Math.log(x) - x) / g;
+  }
 }
 
 // Helper functions

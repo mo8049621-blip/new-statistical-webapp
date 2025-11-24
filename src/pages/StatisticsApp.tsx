@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Container, Heading, Tabs, TabList, TabPanels, Tab, TabPanel, Divider, Alert, AlertIcon, Input, Button, Text, Checkbox, Stack, Textarea, Grid } from '@chakra-ui/react';
-import FileUploader from '../components/FileUploader.tsx';
-import DistributionGenerator from '../components/DistributionGenerator.tsx';
-import ConfidenceIntervalsContainer from '../components/ConfidenceIntervalsContainer.tsx';
-import BasicStatisticsTab from '../components/BasicStatisticsTab.tsx';
-import MLEMoMTab from '../components/MLEMoMTab.tsx';
-import HypothesisTestingTab from '../components/HypothesisTestingTab.tsx';
-import SampleSizeCalculator from '../components/SampleSizeCalculator.tsx';
+import FileUploader from '../components/FileUploader';
+import DistributionGenerator from '../components/DistributionGenerator';
+import ConfidenceIntervalsContainer from '../components/ConfidenceIntervalsContainer';
+import BasicStatisticsTab from '../components/BasicStatisticsTab';
+import MLEMoMTab from '../components/MLEMoMTab';
+import HypothesisTestingTab from '../components/HypothesisTestingTab';
+import SampleSizeCalculator from '../components/SampleSizeCalculator';
+import GoodnessOfFitTest from '../components/GoodnessOfFitTest';
 import { calculateMean, calculateStd, calculateMedian, calculateSkewness, calculateKurtosis } from '../utils/statistics';
 
 // Define dataset interface
@@ -569,6 +570,7 @@ const StatisticsApp: React.FC = () => {
             <Tab>Confidence Intervals</Tab>
             <Tab>MLE & MOM</Tab>
             <Tab>Hypothesis Testing</Tab>
+            <Tab>Goodness of Fit Test</Tab>
             <Tab>Sample Size Calculation</Tab>
           </TabList>
           <TabPanels>
@@ -603,6 +605,15 @@ const StatisticsApp: React.FC = () => {
                 pairedData={pairedData && pairedData.sample1.length > 0 && pairedData.sample2.length > 0 ? {before: pairedData.sample1, after: pairedData.sample2} : undefined}
                 isGeneratedDataset={!selectedDatasetId}
                 distributionInfo={dataset1Distribution}
+                basicStats={basicStats}
+              />
+            </TabPanel>
+
+            <TabPanel>
+              <GoodnessOfFitTest 
+                dataset={currentDataset}
+                isGeneratedDataset={!selectedDatasetId}
+                distributionInfo={!selectedDatasetId ? dataset1Distribution : null}
                 basicStats={basicStats}
               />
             </TabPanel>
