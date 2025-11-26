@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Box, Text, Grid, Select, FormControl, FormLabel, Input, Button, Card, CardBody, Alert, AlertIcon, Stack, Divider } from '@chakra-ui/react';
-import { calculateZTestPower, calculateTTestPower, generatePowerFunctionData, calculateSampleSizeForPower } from '../utils/statistics';
-import PowerFunctionChart from './PowerFunctionChart';
+import { calculateZTestPower, calculateTTestPower, generatePowerFunctionData, calculateSampleSizeForPower } from '../utils/powerAnalysis';
+
+// 使用动态导入来优化性能
+const PowerFunctionChart = lazy(() => import('./PowerFunctionChart'));
 
 interface PowerFunctionProps {
   dataset?: number[];
@@ -231,12 +233,14 @@ const PowerFunction: React.FC<PowerFunctionProps> = ({ dataset }) => {
       {powerData.length > 0 && (
         <Card>
           <CardBody>
-            <PowerFunctionChart 
-              powerData={powerData} 
-              mu0={mu0}
-              alpha={parseFloat(alpha)}
-              effectSize={effectSize}
-            />
+            <Suspense fallback={<Text>Loading chart...</Text>}>
+              <PowerFunctionChart
+                powerData={powerData}
+                mu0={mu0}
+                alpha={parseFloat(alpha)}
+                effectSize={effectSize}
+              />
+            </Suspense>
           </CardBody>
         </Card>
       )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Box,
   Text,
@@ -49,9 +49,12 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import { executeGoFTest, calculateMLE, calculateMean, calculateStd, calculateVariance, generateHistogramData, calculateQQPlotData } from '../utils/statistics';
+import { executeGoFTest } from '../utils/goodnessOfFitAnalysis';
+import { calculateMLE, calculateMean, calculateStd, calculateVariance, generateHistogramData, calculateQQPlotData } from '../utils/statistics';
 import { GoodnessOfFitTestProps, GoFTestType, DistributionTypeForGoF, GoFTestResult, TestDistributionOption, TestMethodOption } from '../types';
-import QQPlot from './QQPlot';
+
+// 使用动态导入来优化性能
+const QQPlot = lazy(() => import('./QQPlot'));
 
 const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
   dataset,
@@ -1152,10 +1155,12 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
               
               {/* QQ Plot (only for normal distribution) */}
               {distributionType === 'normal' && qqPlotData.length > 0 && (
-                <QQPlot 
-                  qqData={qqPlotData}
-                  title={`QQ Plot - ${getCurrentDistribution()?.name || 'Normal Distribution'}`}
-                />
+                <Suspense fallback={<Text>Loading QQ plot...</Text>}>
+                  <QQPlot 
+                    qqData={qqPlotData}
+                    title={`QQ Plot - ${getCurrentDistribution()?.name || 'Normal Distribution'}`}
+                  />
+                </Suspense>
               )}
             </VStack>
           </TabPanel>
