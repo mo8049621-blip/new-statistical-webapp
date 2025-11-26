@@ -1891,6 +1891,53 @@ export const generateHistogramData = (data: number[], numBins?: number): { name:
   return bins;
 };
 
+/**
+ * 计算QQ图数据点
+ * @param data 数据数组
+ * @param distributionType 分布类型，默认'normal'
+ * @param distributionParams 分布参数
+ * @returns QQ图数据点数组
+ */
+export const calculateQQPlotData = (data: number[], distributionType: string = 'normal', distributionParams: Record<string, number> = {}): { theoretical: number; empirical: number }[] => {
+  if (!data || data.length === 0) {
+    throw new Error('数据数组不能为空');
+  }
+  
+  // 排序数据
+  const sortedData = [...data].sort((a, b) => a - b);
+  const n = sortedData.length;
+  const qqData: { theoretical: number; empirical: number }[] = [];
+  
+  // 使用Blom公式计算经验分位数位置
+  for (let i = 0; i < n; i++) {
+    // Blom公式: (i + 0.375) / (n + 0.25)
+    const quantilePosition = (i + 0.375) / (n + 0.25);
+    
+    // 计算理论分位数
+    let theoreticalQuantile: number;
+    
+    if (distributionType === 'normal') {
+      // 使用已有的normalInv函数计算正态分布的理论分位数
+      theoreticalQuantile = normalInv(quantilePosition);
+      
+      // 应用分布参数（如果有）
+      const mean = distributionParams.mean || 0;
+      const std = distributionParams.std || 1;
+      theoreticalQuantile = mean + theoreticalQuantile * std;
+    } else {
+      // 目前只支持正态分布
+      throw new Error(`不支持的分布类型: ${distributionType}`);
+    }
+    
+    qqData.push({
+      theoretical: theoreticalQuantile,
+      empirical: sortedData[i]
+    });
+  }
+  
+  return qqData;
+};
+
 // ========================================
 // Goodness-of-Fit Test Functions
 // ========================================
