@@ -33,6 +33,8 @@ const normalCDF = (x: number): number => {
   return 0.5 * (1 + erf(x / Math.sqrt(2)));
 };
 
+
+
 /**
  * 执行完整的goodness-of-fit检验
  */
@@ -145,6 +147,34 @@ const calculateKolmogorovSmirnovTest = (
       };
       break;
     }
+    case 'poisson': {
+      const lambda = parameters.lambda || calculateMean(data);
+      theoreticalCDF = (x: number) => {
+        if (x < 0) return 0;
+        const k = Math.floor(x);
+        let cdf = 0;
+        for (let i = 0; i <= k; i++) {
+          cdf += Math.exp(-lambda) * Math.pow(lambda, i) / factorial(i);
+        }
+        return cdf;
+      };
+      break;
+    }
+    case 'binomial': {
+      const n = parameters.n || Math.max(...data);
+      const p = parameters.p || calculateMean(data) / n;
+      theoreticalCDF = (x: number) => {
+        if (x < 0) return 0;
+        if (x >= n) return 1;
+        const k = Math.floor(x);
+        let cdf = 0;
+        for (let i = 0; i <= k; i++) {
+          cdf += binomialCoefficient(n, i) * Math.pow(p, i) * Math.pow(1 - p, n - i);
+        }
+        return cdf;
+      };
+      break;
+    }
     default:
       throw new Error(`Unsupported distribution type: ${distributionType}`);
   }
@@ -158,7 +188,7 @@ const calculateKolmogorovSmirnovTest = (
     
     // 计算相邻点之间的最大差值
     const d1 = Math.abs(empCDF - theoCDF);
-    const d2 = i > 0 ? Math.abs(empiricalCDF(sortedData[i] - 1e-10) - theoCDF(x)) : d1;
+    const d2 = i > 0 ? Math.abs(empiricalCDF(sortedData[i] - 1e-10) - theoreticalCDF(x)) : d1;
     
     maxD = Math.max(maxD, d1, d2);
   }
@@ -257,6 +287,63 @@ const calculateChiSquareTest = (
         const lower = Math.max(bins[i].start, 0);
         const upper = Math.max(bins[i].end, 0);
         const probability = (1 - Math.exp(-lambda * upper)) - (1 - Math.exp(-lambda * lower));
+        expectedFrequencies[i] = n * probability;
+      }
+      break;
+    }
+    case 'poisson': {
+      const lambda = parameters.lambda || calculateMean(data);
+      
+      for (let i = 0; i < numBins; i++) {
+        const lower = Math.max(bins[i].start, 0);
+        const upper = Math.max(bins[i].end, 0);
+        
+        // 计算CDF差值
+        let lowerCDF = 0;
+        let upperCDF = 0;
+        const lowerK = Math.floor(lower);
+        const upperK = Math.floor(upper);
+        
+        // 计算lowerCDF
+        for (let k = 0; k <= lowerK; k++) {
+          lowerCDF += Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k);
+        }
+        
+        // 计算upperCDF
+        for (let k = 0; k <= upperK; k++) {
+          upperCDF += Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k);
+        }
+        
+        const probability = upperCDF - lowerCDF;
+        expectedFrequencies[i] = n * probability;
+      }
+      break;
+    }
+    case 'binomial': {
+      const binomN = parameters.n || Math.max(...data);
+      const p = parameters.p || calculateMean(data) / binomN;
+      
+      for (let i = 0; i < numBins; i++) {
+        const lower = Math.max(bins[i].start, 0);
+        const upper = Math.min(bins[i].end, binomN);
+        
+        // 计算CDF差值
+        let lowerCDF = 0;
+        let upperCDF = 0;
+        const lowerK = Math.floor(lower);
+        const upperK = Math.floor(upper);
+        
+        // 计算lowerCDF
+        for (let k = 0; k <= lowerK; k++) {
+          lowerCDF += binomialCoefficient(binomN, k) * Math.pow(p, k) * Math.pow(1 - p, binomN - k);
+        }
+        
+        // 计算upperCDF
+        for (let k = 0; k <= upperK; k++) {
+          upperCDF += binomialCoefficient(binomN, k) * Math.pow(p, k) * Math.pow(1 - p, binomN - k);
+        }
+        
+        const probability = upperCDF - lowerCDF;
         expectedFrequencies[i] = n * probability;
       }
       break;
@@ -403,6 +490,29 @@ const calculateJarqueBeraTest = (
 };
 
 // Helper functions for GoF tests
+
+// 计算阶乘
+const factorial = (n: number): number => {
+  if (n <= 1) return 1;
+  let result = 1;
+  for (let i = 2; i <= n; i++) {
+    result *= i;
+  }
+  return result;
+};
+
+// 计算二项式系数
+const binomialCoefficient = (n: number, k: number): number => {
+  if (k < 0 || k > n) return 0;
+  if (k === 0 || k === n) return 1;
+  
+  // 使用对数计算避免数值溢出
+  let result = 0;
+  for (let i = 1; i <= k; i++) {
+    result += Math.log((n - k + i) / i);
+  }
+  return Math.exp(result);
+};
 
 /**
  * 计算数据的均值

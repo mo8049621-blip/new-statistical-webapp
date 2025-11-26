@@ -371,18 +371,14 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
 
       setTestResult(result);
 
-      // 计算QQ图数据（仅支持正态分布）
-      if (distributionType === 'normal') {
-        try {
-          const paramsToUse = useCustomParameters ? customParams : estimatedParams;
-          const qqData = calculateQQPlotData(dataset, 'normal', paramsToUse);
-          setQQPlotData(qqData);
-        } catch (err) {
-          console.error('Error calculating QQ plot data:', err);
-          setQQPlotData([]);
-        }
-      } else {
-        setQQPlotData([]); // 非正态分布清除QQ图数据
+      // 计算QQ图数据（现在支持所有分布类型）
+      try {
+        const paramsToUse = useCustomParameters ? customParams : estimatedParams;
+        const qqData = calculateQQPlotData(dataset, distributionType, paramsToUse);
+        setQQPlotData(qqData);
+      } catch (err) {
+        console.error('Error calculating QQ plot data:', err);
+        setQQPlotData([]);
       }
 
       if (onTestComplete) {
@@ -1153,12 +1149,12 @@ const GoodnessOfFitTest: React.FC<GoodnessOfFitTestProps> = ({
                 </Card>
               )}
               
-              {/* QQ Plot (only for normal distribution) */}
-              {distributionType === 'normal' && qqPlotData.length > 0 && (
+              {/* QQ Plot (now supports all distributions) */}
+              {qqPlotData.length > 0 && (
                 <Suspense fallback={<Text>Loading QQ plot...</Text>}>
                   <QQPlot 
                     qqData={qqPlotData}
-                    title={`QQ Plot - ${getCurrentDistribution()?.name || 'Normal Distribution'}`}
+                    title={`QQ Plot - ${getCurrentDistribution()?.name || 'Distribution'}`}
                   />
                 </Suspense>
               )}

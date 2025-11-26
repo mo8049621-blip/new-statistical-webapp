@@ -1916,17 +1916,45 @@ export const calculateQQPlotData = (data: number[], distributionType: string = '
     // 计算理论分位数
     let theoreticalQuantile: number;
     
-    if (distributionType === 'normal') {
-      // 使用已有的normalInv函数计算正态分布的理论分位数
-      theoreticalQuantile = normalInv(quantilePosition);
-      
-      // 应用分布参数（如果有）
-      const mean = distributionParams.mean || 0;
-      const std = distributionParams.std || 1;
-      theoreticalQuantile = mean + theoreticalQuantile * std;
-    } else {
-      // 目前只支持正态分布
-      throw new Error(`不支持的分布类型: ${distributionType}`);
+    switch (distributionType) {
+      case 'normal': {
+        // 使用已有的normalInv函数计算正态分布的理论分位数
+        theoreticalQuantile = normalInv(quantilePosition);
+        
+        // 应用分布参数（如果有）
+        const mean = distributionParams.mean || 0;
+        const std = distributionParams.std || 1;
+        theoreticalQuantile = mean + theoreticalQuantile * std;
+        break;
+      }
+      case 'uniform': {
+        // 均匀分布的反函数
+        const a = distributionParams.a || 0;
+        const b = distributionParams.b || 1;
+        theoreticalQuantile = a + quantilePosition * (b - a);
+        break;
+      }
+      case 'exponential': {
+        // 指数分布的反函数
+        const lambda = distributionParams.lambda || 1;
+        theoreticalQuantile = -Math.log(1 - quantilePosition) / lambda;
+        break;
+      }
+      case 'poisson': {
+        // 泊松分布的反函数（使用二分法近似计算）
+        const lambda = distributionParams.lambda || 1;
+        theoreticalQuantile = poissonInv(quantilePosition, lambda);
+        break;
+      }
+      case 'binomial': {
+        // 二项分布的反函数（使用二分法近似计算）
+        const nParam = distributionParams.n || Math.max(...data);
+        const p = distributionParams.p || calculateMean(data) / nParam;
+        theoreticalQuantile = binomialInv(quantilePosition, nParam, p);
+        break;
+      }
+      default:
+        throw new Error(`不支持的分布类型: ${distributionType}`);
     }
     
     qqData.push({
@@ -1936,6 +1964,83 @@ export const calculateQQPlotData = (data: number[], distributionType: string = '
   }
   
   return qqData;
+};
+
+/**
+ * 计算泊松分布的反函数（分位数函数）
+ * @param p 概率值
+ * @param lambda 泊松分布参数
+ * @returns 分位数值
+ */
+const poissonInv = (p: number, lambda: number): number => {
+  if (p <= 0) return 0;
+  if (p >= 1) return Infinity;
+  
+  let k = 0;
+  let cdf = Math.exp(-lambda);
+  
+  while (cdf < p) {
+    k++;
+    cdf += Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k);
+  }
+  
+  return k;
+};
+
+/**
+ * 计算二项分布的反函数（分位数函数）
+ * @param p 概率值
+ * @param n 试验次数
+ * @param pParam 成功概率
+ * @returns 分位数值
+ */
+const binomialInv = (p: number, n: number, pParam: number): number => {
+  if (p <= 0) return 0;
+  if (p >= 1) return n;
+  
+  let k = 0;
+  let cdf = Math.pow(1 - pParam, n);
+  
+  while (cdf < p && k < n) {
+    k++;
+    cdf += binomialCoefficient(n, k) * Math.pow(pParam, k) * Math.pow(1 - pParam, n - k);
+  }
+  
+  return k;
+};
+
+/**
+ * 计算二项式系数
+ * @param n 总数
+ * @param k 选择数
+ * @returns 二项式系数
+ */
+const binomialCoefficient = (n: number, k: number): number => {
+  if (k < 0 || k > n) return 0;
+  if (k === 0 || k === n) return 1;
+  
+  // 使用对数计算避免数值溢出
+  let result = 0;
+  for (let i = 1; i <= k; i++) {
+    result += Math.log((n - k + i) / i);
+  }
+  return Math.exp(result);
+};
+
+/**
+ * 计算阶乘
+ * @param n 输入值
+ * @returns 阶乘值
+ */
+const factorial = (n: number): number => {
+  if (n < 0) return 0;
+  if (n === 0 || n === 1) return 1;
+  
+  let result = 1;
+  for (let i = 2; i <= n; i++) {
+    result *= i;
+  }
+  return result;
 };
 
 // ========================================
@@ -2090,18 +2195,7 @@ const normalPDF = (x: number, mean: number = 0, std: number = 1): number => {
   return (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
 };
 
-/**
- * 阶乘函数
- */
-const factorial = (n: number): number => {
-  if (n < 0) return 0;
-  if (n === 0 || n === 1) return 1;
-  let result = 1;
-  for (let i = 2; i <= n; i++) {
-    result *= i;
-  }
-  return result;
-};
+
 
 /**
  * 泊松分布的概率质量函数
